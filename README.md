@@ -216,7 +216,7 @@ main/board\_config.h
 ## 软件架构
 
 主要模块如下：
-
+```text
 main.c
   ├── app\_config.h          应用默认配置与功能开关
   ├── board\_config.h        板级 GPIO 与硬件参数
@@ -236,7 +236,7 @@ main.c
   ├── st7789.c              ST7789 显示驱动
   └── xpt2046.c             XPT2046 触摸驱动
 
-
+```
 
 ## 启动流程
 
