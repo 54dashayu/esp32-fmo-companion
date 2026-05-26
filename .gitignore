@@ -3,7 +3,6 @@
 # ---------------------------------------------------------------------------
 sdkconfig
 sdkconfig.old
-.devcontainer/
 build/
 sdkconfig.old
 
