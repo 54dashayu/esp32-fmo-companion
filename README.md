@@ -47,7 +47,7 @@ FMO 伴侣提供的一切数据均来源于FMO主机接口。
 ## 开源与继续开发
 
 本项目选择开源，是希望更多业余无线电爱好者、嵌入式开发者和 FMO 用户能够参与进来。
-本项目使用 ESP-IDF v5.5.1 开发，UI 基于 LVGL，显示屏为 ST7789，触摸芯片为 XPT2046，音频默认使用 ESP32 内置 DAC 输出，目前限于硬件本身性能，蓝牙部分完成了初始的代码工作，但无法在当前适配的开发使用。
+本项目使用 ESP-IDF v5.5.1 开发，UI 基于 LVGL。当前 fork 正在移植到 M5Stack Core Basic，显示屏走 ILI9341 兼容驱动，使用正面 A/B/C 三个实体按键替代原项目的触摸输入，音频默认使用 ESP32 内置 DAC 输出。目前限于硬件本身性能，蓝牙部分完成了初始的代码工作，但无法在当前适配的开发使用。
 你可以基于本项目继续开发：
 
 - 适配不同 ESP32 开发板；
@@ -82,6 +82,7 @@ FMO 伴侣提供的一切数据均来源于FMO主机接口。
 -   [QSO 同步说明](#qso-%E5%90%8C%E6%AD%A5%E8%AF%B4%E6%98%8E)
 -   [省电模式](#%E7%9C%81%E7%94%B5%E6%A8%A1%E5%BC%8F)
 -   [电池监测](#%E7%94%B5%E6%B1%A0%E7%9B%91%E6%B5%8B)
+-   [M5 Core 页面切片](docs/m5_core_page_slices.md)
 -   [编译与烧录](#%E7%BC%96%E8%AF%91%E4%B8%8E%E7%83%A7%E5%BD%95)
 -   [许可证](#%E8%AE%B8%E5%8F%AF%E8%AF%81)
 
@@ -160,17 +161,17 @@ FMO 伴侣提供的一切数据均来源于FMO主机接口。
 
 ## 硬件配置
 
-当前项目默认硬件如下：
+当前 fork 默认适配 M5Stack Core Basic / Basic v2.7 一类硬件：
 
 | 功能    | 配置            |
 | ----- | ------------- |
-| 主控    | ESP32         |
-| 显示屏   | ST7789        |
+| 主控    | ESP32-D0WDQ6-V3 / ESP32 |
+| 显示屏   | ILI9342C，按 ILI9341 兼容驱动初始化 |
 | 分辨率   | 320 × 240     |
-| 触摸芯片  | XPT2046       |
+| 输入    | 正面 A/B/C 三个实体按键 |
 | UI 框架 | LVGL          |
-| 音频输出  | ESP32 内置 DAC  |
-| 电池检测  | ADC           |
+| 音频输出  | ESP32 内置 DAC，GPIO25 |
+| 电池检测  | ADC，GPIO35 |
 | 存储    | NVS           |
 | 可选存储  | SD 卡 / SPIFFS |
 
@@ -182,31 +183,29 @@ GPIO 配置位于：
 
 main/board\_config.h
 
-默认引脚如下：
+M5Stack Core Basic 引脚如下：
 
 | 功能          | GPIO   |
 | ----------- | ------ |
-| LCD CS      | GPIO15 |
-| LCD DC      | GPIO2  |
-| LCD MOSI    | GPIO13 |
-| LCD MISO    | GPIO12 |
-| LCD SCLK    | GPIO14 |
-| LCD BL      | GPIO21 |
-| LCD RST     | 未连接    |
-| Touch CS    | GPIO33 |
-| Touch CLK   | GPIO25 |
-| Touch MOSI  | GPIO32 |
-| Touch MISO  | GPIO39 |
-| Touch IRQ   | GPIO36 |
-| Audio DAC   | GPIO26 |
-| Audio EN    | GPIO4  |
-| SD CS       | GPIO5  |
+| LCD CS      | GPIO14 |
+| LCD DC      | GPIO27 |
+| LCD MOSI    | GPIO23 |
+| LCD MISO    | GPIO19 |
+| LCD SCLK    | GPIO18 |
+| LCD BL      | GPIO32 |
+| LCD RST     | GPIO33 |
+| Button A    | GPIO39 |
+| Button B    | GPIO38 |
+| Button C    | GPIO37 |
+| Audio DAC   | GPIO25 |
+| Audio EN    | 未连接 |
+| SD CS       | GPIO4  |
 | SD SCLK     | GPIO18 |
 | SD MISO     | GPIO19 |
 | SD MOSI     | GPIO23 |
-| Battery ADC | GPIO34 |
+| Battery ADC | GPIO35 |
 
-> 注意：GPIO2、GPIO4、GPIO5、GPIO12、GPIO15 可能与 ESP32 启动绑带相关。硬件设计时应避免外设在上电瞬间强拉这些引脚到异常电平。
+按键映射：Button A 为上一个/向左，Button B 为确认，Button C 为下一个/向右。当前阶段优先保证屏幕点亮和基础导航，后续还需要继续按 M5 无触摸交互优化设置页。
 
 
 
@@ -230,8 +229,8 @@ main.c
   ├── app\_power\_save.c      省电模式管理
   ├── lv\_port\_disp.c        LVGL 显示移植
   ├── lv\_port\_indev.c       LVGL 输入移植
-  ├── st7789.c              ST7789 显示驱动
-  └── xpt2046.c             XPT2046 触摸驱动
+  ├── ili9341.c             M5Stack LCD 兼容显示驱动
+  └── lv_port_indev.c       M5Stack A/B/C 按键输入
 
 ```
 

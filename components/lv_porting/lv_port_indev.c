@@ -10,12 +10,30 @@
  *      INCLUDES
  *********************/
 #include "lv_port_indev.h"
+#include "driver/gpio.h"
 #include "lvgl/lvgl.h"
+
+#if LV_USE_KEYBOARD
+#include "lvgl/src/extra/widgets/keyboard/lv_keyboard.h"
+#endif
+
+#if !defined(CONFIG_LV_TOUCH_CONTROLLER_NONE)
 #include "touch_driver.h"
+#endif
 
 /*********************
  *      DEFINES
  *********************/
+#if defined(CONFIG_LV_PREDEFINED_DISPLAY_M5STACK)
+#define LV_PORT_USE_M5STACK_BUTTONS     1
+#else
+#define LV_PORT_USE_M5STACK_BUTTONS     0
+#endif
+
+#define LV_PORT_M5_BUTTON_A_GPIO        GPIO_NUM_39
+#define LV_PORT_M5_BUTTON_B_GPIO        GPIO_NUM_38
+#define LV_PORT_M5_BUTTON_C_GPIO        GPIO_NUM_37
+#define LV_PORT_M5_BUTTON_ACTIVE_LEVEL  0
 
 /**********************
  *      TYPEDEFS
@@ -37,6 +55,7 @@ static void mouse_get_xy(lv_coord_t * x, lv_coord_t * y);
 
 static void keypad_init(void);
 static void keypad_read(lv_indev_drv_t * indev_drv, lv_indev_data_t * data);
+static bool keypad_is_keyboard_focused(void);
 static uint32_t keypad_get_key(void);
 
 static void encoder_init(void);
@@ -84,6 +103,7 @@ void lv_port_indev_init(void)
 
     static lv_indev_drv_t indev_drv;
 
+#if !defined(CONFIG_LV_TOUCH_CONTROLLER_NONE)
     /*------------------
      * Touchpad
      * -----------------*/
@@ -96,6 +116,21 @@ void lv_port_indev_init(void)
     indev_drv.type = LV_INDEV_TYPE_POINTER;
     indev_drv.read_cb = touch_driver_read;
     indev_touchpad = lv_indev_drv_register(&indev_drv);
+#endif
+
+#if LV_PORT_USE_M5STACK_BUTTONS
+    keypad_init();
+
+    lv_indev_drv_init(&indev_drv);
+    indev_drv.type = LV_INDEV_TYPE_KEYPAD;
+    indev_drv.read_cb = keypad_read;
+    indev_keypad = lv_indev_drv_register(&indev_drv);
+
+    lv_group_t *default_group = lv_group_create();
+    lv_group_set_default(default_group);
+    lv_indev_set_group(indev_keypad, default_group);
+#endif
+
 #if 0
     /*------------------
      * Mouse
@@ -273,7 +308,19 @@ static void mouse_get_xy(lv_coord_t * x, lv_coord_t * y)
 /*Initialize your keypad*/
 static void keypad_init(void)
 {
-    /*Your code comes here*/
+#if LV_PORT_USE_M5STACK_BUTTONS
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << LV_PORT_M5_BUTTON_A_GPIO) |
+                        (1ULL << LV_PORT_M5_BUTTON_B_GPIO) |
+                        (1ULL << LV_PORT_M5_BUTTON_C_GPIO),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+
+    gpio_config(&io_conf);
+#endif
 }
 
 /*Will be called by the library to read the mouse*/
@@ -281,21 +328,20 @@ static void keypad_read(lv_indev_drv_t * indev_drv, lv_indev_data_t * data)
 {
     static uint32_t last_key = 0;
 
-    /*Get the current x and y coordinates*/
-    mouse_get_xy(&data->point.x, &data->point.y);
-
     /*Get whether the a key is pressed and save the pressed key*/
     uint32_t act_key = keypad_get_key();
+
     if(act_key != 0) {
         data->state = LV_INDEV_STATE_PR;
+        bool keyboard_focused = keypad_is_keyboard_focused();
 
         /*Translate the keys to LVGL control characters according to your key definitions*/
         switch(act_key) {
             case 1:
-                act_key = LV_KEY_NEXT;
+                act_key = keyboard_focused ? LV_KEY_RIGHT : LV_KEY_NEXT;
                 break;
             case 2:
-                act_key = LV_KEY_PREV;
+                act_key = keyboard_focused ? LV_KEY_LEFT : LV_KEY_PREV;
                 break;
             case 3:
                 act_key = LV_KEY_LEFT;
@@ -317,10 +363,40 @@ static void keypad_read(lv_indev_drv_t * indev_drv, lv_indev_data_t * data)
     data->key = last_key;
 }
 
+static bool keypad_is_keyboard_focused(void)
+{
+#if LV_PORT_USE_M5STACK_BUTTONS && LV_USE_KEYBOARD
+    lv_group_t *group = lv_group_get_default();
+    if (!group) {
+        return false;
+    }
+
+    lv_obj_t *focused = lv_group_get_focused(group);
+    return focused && lv_obj_check_type(focused, &lv_keyboard_class);
+#else
+    return false;
+#endif
+}
+
 /*Get the currently being pressed key.  0 if no key is pressed*/
 static uint32_t keypad_get_key(void)
 {
-    /*Your code comes here*/
+#if LV_PORT_USE_M5STACK_BUTTONS
+    if (gpio_get_level(LV_PORT_M5_BUTTON_A_GPIO) ==
+        LV_PORT_M5_BUTTON_ACTIVE_LEVEL) {
+        return 2;
+    }
+
+    if (gpio_get_level(LV_PORT_M5_BUTTON_B_GPIO) ==
+        LV_PORT_M5_BUTTON_ACTIVE_LEVEL) {
+        return 5;
+    }
+
+    if (gpio_get_level(LV_PORT_M5_BUTTON_C_GPIO) ==
+        LV_PORT_M5_BUTTON_ACTIVE_LEVEL) {
+        return 1;
+    }
+#endif
 
     return 0;
 }

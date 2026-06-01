@@ -45,6 +45,7 @@
 
 /* Project headers ---------------------------------------------------------- */
 #include "app_power_save.h"
+#include "app_config.h"
 #include "app_settings.h"
 #include "app_ui.h"
 #include "audio_output.h"
@@ -158,7 +159,9 @@ static void audio_ws_start_task(void *arg)
 
 void app_main(void)
 {
+#if APP_BOARD_HAS_XPT2046_TOUCH
     esp_log_level_set("XPT2046", ESP_LOG_WARN);
+#endif
 
     ESP_LOGI(TAG, "app start");
 

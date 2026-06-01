@@ -84,14 +84,14 @@ void ili9341_init(void)
 	gpio_set_direction(ILI9341_DC, GPIO_MODE_OUTPUT);
 
 #if ILI9341_USE_RST
-    gpio_pad_select_gpio(ILI9341_RST);
+    esp_rom_gpio_pad_select_gpio(ILI9341_RST);
 	gpio_set_direction(ILI9341_RST, GPIO_MODE_OUTPUT);
 
 	//Reset the display
 	gpio_set_level(ILI9341_RST, 0);
-	vTaskDelay(100 / portTICK_RATE_MS);
+	vTaskDelay(pdMS_TO_TICKS(100));
 	gpio_set_level(ILI9341_RST, 1);
-	vTaskDelay(100 / portTICK_RATE_MS);
+	vTaskDelay(pdMS_TO_TICKS(100));
 #endif
 
 	ESP_LOGI(TAG, "Initialization.");

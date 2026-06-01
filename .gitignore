@@ -4,6 +4,7 @@
 sdkconfig
 sdkconfig.old
 build/
+dist/
 sdkconfig.old
 
 # If you prefer not to commit local sdkconfig, keep this enabled.

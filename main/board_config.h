@@ -31,7 +31,7 @@ extern "C" {
 #endif
 
 /* -------------------------------------------------------------------------- */
-/* LCD: ST7789                                                                */
+/* LCD: M5Stack Core Basic / ILI9342C, driven through ILI9341-compatible path */
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -47,43 +47,43 @@ extern "C" {
 /**
  * @brief LCD SPI CS 引脚。
  */
-#define BOARD_LCD_CS_GPIO           GPIO_NUM_15
+#define BOARD_LCD_CS_GPIO           GPIO_NUM_14
 
 /**
  * @brief LCD 数据/命令选择引脚。
  */
-#define BOARD_LCD_DC_GPIO           GPIO_NUM_2
+#define BOARD_LCD_DC_GPIO           GPIO_NUM_27
 
 /**
  * @brief LCD SPI MOSI 引脚。
  */
-#define BOARD_LCD_MOSI_GPIO         GPIO_NUM_13
+#define BOARD_LCD_MOSI_GPIO         GPIO_NUM_23
 
 /**
  * @brief LCD SPI MISO 引脚。
  *
  * 对于只写 LCD，该引脚可能不使用。
  */
-#define BOARD_LCD_MISO_GPIO         GPIO_NUM_12
+#define BOARD_LCD_MISO_GPIO         GPIO_NUM_19
 
 /**
  * @brief LCD SPI SCLK 引脚。
  */
-#define BOARD_LCD_SCLK_GPIO         GPIO_NUM_14
+#define BOARD_LCD_SCLK_GPIO         GPIO_NUM_18
 
 /**
  * @brief LCD 背光控制引脚。
  *
  * app_ui.c 中会使用 LEDC PWM 控制该引脚。
  */
-#define BOARD_LCD_BL_GPIO           GPIO_NUM_21
+#define BOARD_LCD_BL_GPIO           GPIO_NUM_32
 
 /**
  * @brief LCD 复位引脚。
  *
  * GPIO_NUM_NC 表示当前硬件未连接独立复位脚。
  */
-#define BOARD_LCD_RST_GPIO          GPIO_NUM_NC
+#define BOARD_LCD_RST_GPIO          GPIO_NUM_33
 
 /**
  * @brief LCD 背光点亮电平。
@@ -102,75 +102,38 @@ extern "C" {
 #define BOARD_LCD_BL_OFF_LEVEL      0
 
 /* -------------------------------------------------------------------------- */
-/* Touch: XPT2046                                                             */
+/* Input: M5Stack Core front buttons                                          */
 /* -------------------------------------------------------------------------- */
 
 /**
- * @brief XPT2046 触摸 SPI CS 引脚。
+ * @brief 当前 M5Stack Core Basic 无触摸，使用正面 A/B/C 三个按键。
  */
-#define BOARD_TOUCH_CS_GPIO         GPIO_NUM_33
+#define BOARD_HAS_TOUCH             0
+#define BOARD_HAS_M5_BUTTONS        1
 
 /**
- * @brief XPT2046 触摸 SPI CLK 引脚。
- */
-#define BOARD_TOUCH_CLK_GPIO        GPIO_NUM_25
-
-/**
- * @brief XPT2046 触摸 SPI MOSI 引脚。
- */
-#define BOARD_TOUCH_MOSI_GPIO       GPIO_NUM_32
-
-/**
- * @brief XPT2046 触摸 SPI MISO 引脚。
+ * @brief M5Stack Core Button A/B/C GPIO。
  *
- * @note
- * GPIO39 是 ESP32 输入专用 GPIO，适合作为 MISO。
+ * 按键为低电平按下。
  */
-#define BOARD_TOUCH_MISO_GPIO       GPIO_NUM_39
+#define BOARD_BUTTON_A_GPIO         GPIO_NUM_39
+#define BOARD_BUTTON_B_GPIO         GPIO_NUM_38
+#define BOARD_BUTTON_C_GPIO         GPIO_NUM_37
+#define BOARD_BUTTON_ACTIVE_LEVEL   0
 
 /**
- * @brief XPT2046 触摸中断引脚。
- *
- * @note
- * GPIO36 是 ESP32 输入专用 GPIO，适合作为 IRQ 输入。
+ * @brief 兼容旧触摸配置引用，M5 Core Basic 未连接触摸。
  */
-#define BOARD_TOUCH_IRQ_GPIO        GPIO_NUM_36
-
-/**
- * @brief 触摸中断有效电平。
- *
- * 0：低电平有效
- * 1：高电平有效
- */
+#define BOARD_TOUCH_CS_GPIO         GPIO_NUM_NC
+#define BOARD_TOUCH_CLK_GPIO        GPIO_NUM_NC
+#define BOARD_TOUCH_MOSI_GPIO       GPIO_NUM_NC
+#define BOARD_TOUCH_MISO_GPIO       GPIO_NUM_NC
+#define BOARD_TOUCH_IRQ_GPIO        GPIO_NUM_NC
 #define BOARD_TOUCH_IRQ_ACTIVE      0
-
-/**
- * @brief 触摸原始 X 最小值。
- *
- * 该值来自触摸校准结果。
- */
-#define BOARD_TOUCH_X_MIN           495
-
-/**
- * @brief 触摸原始 X 最大值。
- *
- * 该值来自触摸校准结果。
- */
-#define BOARD_TOUCH_X_MAX           3398
-
-/**
- * @brief 触摸原始 Y 最小值。
- *
- * 该值来自触摸校准结果。
- */
-#define BOARD_TOUCH_Y_MIN           721
-
-/**
- * @brief 触摸原始 Y 最大值。
- *
- * 该值来自触摸校准结果。
- */
-#define BOARD_TOUCH_Y_MAX           3448
+#define BOARD_TOUCH_X_MIN           0
+#define BOARD_TOUCH_X_MAX           0
+#define BOARD_TOUCH_Y_MIN           0
+#define BOARD_TOUCH_Y_MAX           0
 
 /* -------------------------------------------------------------------------- */
 /* Audio output                                                               */
@@ -179,14 +142,14 @@ extern "C" {
 /**
  * @brief ESP32 内置 DAC 音频输出引脚。
  *
- * GPIO26 对应 ESP32 DAC 通道 2。
+ * M5Stack Core Basic 的内置扬声器接 ESP32 DAC GPIO25。
  */
-#define BOARD_AUDIO_DAC_GPIO        GPIO_NUM_26
+#define BOARD_AUDIO_DAC_GPIO        GPIO_NUM_25
 
 /**
  * @brief 音频功放使能/静音控制引脚。
  */
-#define BOARD_AUDIO_EN_GPIO         GPIO_NUM_4
+#define BOARD_AUDIO_EN_GPIO         GPIO_NUM_NC
 
 /**
  * @brief 音频功放使能有效电平。
@@ -211,7 +174,7 @@ extern "C" {
 /**
  * @brief SD 卡 SPI CS 引脚。
  */
-#define BOARD_SD_CS_GPIO            GPIO_NUM_5
+#define BOARD_SD_CS_GPIO            GPIO_NUM_4
 
 /**
  * @brief SD 卡 SPI SCLK 引脚。
@@ -236,11 +199,11 @@ extern "C" {
  * @brief 电池电压 ADC 输入引脚。
  *
  * @note
- * GPIO34 是 ESP32 输入专用 GPIO，适合作为 ADC 输入。
+ * GPIO35 是 ESP32 输入专用 GPIO，适合作为 M5Stack 电池 ADC 输入。
  * 实际电池电压需要结合分压电阻和 app_config.h 中的
  * BATTERY_VOLTAGE_SCALE_PERMILLE 计算。
  */
-#define BOARD_BAT_ADC_GPIO          GPIO_NUM_34
+#define BOARD_BAT_ADC_GPIO          GPIO_NUM_35
 
 #ifdef __cplusplus
 }

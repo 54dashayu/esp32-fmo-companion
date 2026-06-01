@@ -87,8 +87,8 @@ static const char *TAG = "battery_monitor";
 /*
  * 当前硬件连接关系：
  *
- * BOARD_BAT_ADC_GPIO = GPIO34
- * GPIO34             = ADC1_CHANNEL_6
+ * BOARD_BAT_ADC_GPIO = GPIO35
+ * GPIO35             = ADC1_CHANNEL_7
  *
  * @note
  * 电池采样必须优先使用 ADC1。
@@ -96,7 +96,7 @@ static const char *TAG = "battery_monitor";
  *
  * 如果后续修改 BOARD_BAT_ADC_GPIO，需要同步确认 ADC channel。
  */
-#define BATTERY_ADC_CHANNEL          ADC1_CHANNEL_6
+#define BATTERY_ADC_CHANNEL          ADC1_CHANNEL_7
 #define BATTERY_ADC_WIDTH            ADC_WIDTH_BIT_12
 #define BATTERY_ADC_ATTEN            ADC_ATTEN_DB_11
 
@@ -118,6 +118,12 @@ static const char *TAG = "battery_monitor";
  * 如果芯片 eFuse 中没有可用校准值，则使用该默认参考电压。
  */
 #define BATTERY_ADC_DEFAULT_VREF     1100
+
+/*
+ * ADC 读数低到该阈值以下时，通常表示当前板型的电池检测脚未接入
+ * 或采样电路暂不可用；经典 ESP32 已无法靠这样的电池电压运行。
+ */
+#define BATTERY_VALID_MIN_MV         1000
 
 /* -------------------------------------------------------------------------- */
 /* Private types                                                              */
@@ -385,6 +391,15 @@ static esp_err_t battery_read_voltage_mv(uint32_t *out_mv)
 
     if (corrected_mv < 0) {
         corrected_mv = 0;
+    }
+
+    if (corrected_mv < BATTERY_VALID_MIN_MV) {
+        ESP_LOGW(TAG,
+                 "battery reading ignored, raw=%u, adc_mv=%u, corrected_mv=%d",
+                 (unsigned)raw_avg,
+                 (unsigned)adc_mv,
+                 (int)corrected_mv);
+        return ESP_ERR_INVALID_STATE;
     }
 
     *out_mv = (uint32_t)corrected_mv;

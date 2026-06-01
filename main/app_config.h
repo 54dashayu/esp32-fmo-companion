@@ -226,7 +226,7 @@
 /**
  * @brief 当前板级是否带 XPT2046 触摸芯片。
  */
-#define APP_BOARD_HAS_XPT2046_TOUCH     1
+#define APP_BOARD_HAS_XPT2046_TOUCH     0
 
 /**
  * @brief 当前板级是否带 SD 卡。

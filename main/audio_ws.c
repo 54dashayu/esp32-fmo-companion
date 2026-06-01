@@ -548,8 +548,17 @@ static esp_err_t audio_ws_qso_count_save_state(uint32_t count,
 
 static void audio_amp_init(void)
 {
+    gpio_num_t audio_en_gpio = BOARD_AUDIO_EN_GPIO;
+
+    if (audio_en_gpio == GPIO_NUM_NC) {
+        s_amp_enabled = false;
+        return;
+    }
+
+    uint64_t amp_pin_mask = 1ULL << (uint32_t)audio_en_gpio;
+
     gpio_config_t io_conf = {
-        .pin_bit_mask = 1ULL << BOARD_AUDIO_EN_GPIO,
+        .pin_bit_mask = amp_pin_mask,
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -565,7 +574,7 @@ static void audio_amp_init(void)
     /*
      * 默认关闭功放。
      */
-    gpio_set_level(BOARD_AUDIO_EN_GPIO, BOARD_AUDIO_MUTE_ACTIVE);
+    gpio_set_level(audio_en_gpio, BOARD_AUDIO_MUTE_ACTIVE);
 
     s_amp_enabled = false;
 }
@@ -588,6 +597,10 @@ static void audio_amp_enable(bool enable)
     }
 
     s_amp_enabled = enable;
+
+    if (BOARD_AUDIO_EN_GPIO == GPIO_NUM_NC) {
+        return;
+    }
 
     gpio_set_level(BOARD_AUDIO_EN_GPIO,
                    enable ? BOARD_AUDIO_EN_ACTIVE :
