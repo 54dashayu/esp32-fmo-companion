@@ -47,6 +47,9 @@ static const char *TAG = "app_settings";
 #define NVS_NAMESPACE  "appcfg"
 #define NVS_KEY_BLOB   "settings"
 
+#define OLD_DEFAULT_OWNER_CALLSIGN "BI8SIG"
+#define OLD_DEFAULT_FMO_HOST       "192.168.3.165"
+
 #ifndef APP_DEFAULT_OWNER_CALLSIGN
 #define APP_DEFAULT_OWNER_CALLSIGN "BI4TKL"
 #endif
@@ -871,6 +874,28 @@ esp_err_t app_settings_init(void)
          * 保证规则统一。
          */
         app_settings_sanitize(&loaded);
+
+        bool migrated = false;
+
+        if (strcmp(loaded.owner_callsign, OLD_DEFAULT_OWNER_CALLSIGN) == 0) {
+            copy_owner_callsign(loaded.owner_callsign,
+                                sizeof(loaded.owner_callsign),
+                                APP_DEFAULT_OWNER_CALLSIGN);
+            migrated = true;
+        }
+
+        if (strcmp(loaded.fmo_host, OLD_DEFAULT_FMO_HOST) == 0) {
+            safe_strcpy(loaded.fmo_host,
+                        sizeof(loaded.fmo_host),
+                        DEFAULT_FMO_HOST);
+            app_settings_build_ws_urls(&loaded);
+            migrated = true;
+        }
+
+        if (migrated) {
+            ESP_LOGI(TAG, "old defaults migrated");
+            return app_settings_save(&loaded);
+        }
 
         s_settings = loaded;
 

@@ -28,6 +28,7 @@
 
 /* Project headers ---------------------------------------------------------- */
 #include "app_config.h"
+#include "app_led.h"
 #include "app_settings.h"
 #include "audio_ws.h"
 #include "ui_async.h"
@@ -87,6 +88,11 @@ static void app_power_save_enter(void)
              (unsigned long)s_power_save_reasons);
 
     /*
+     * 先关闭灯带，避免进入省电前的通联状态保持常亮。
+     */
+    app_led_set_power_save(true);
+
+    /*
      * 先停止网络音频和 WebSocket。
      */
     audio_ws_stop();
@@ -131,6 +137,8 @@ static void app_power_save_exit(void)
     s_power_save_active = false;
 
     ESP_LOGW(TAG, "exit power save");
+
+    app_led_set_power_save(false);
 
     /*
      * 退出省电时钟屏。

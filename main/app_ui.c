@@ -279,6 +279,8 @@ static lv_obj_t *s_label_volume_value = NULL;
 static lv_obj_t *s_slider_backlight = NULL;
 static lv_obj_t *s_label_backlight_value = NULL;
 
+static bool s_settings_slider_editing = false;
+
 /* WiFi 设置 */
 static lv_obj_t *s_ta_wifi_ssid = NULL;
 static lv_obj_t *s_ta_wifi_password = NULL;
@@ -490,6 +492,10 @@ static void settings_volume_save_event_cb(lv_event_t *e);
 static void settings_backlight_open_event_cb(lv_event_t *e);
 static void settings_backlight_slider_event_cb(lv_event_t *e);
 static void settings_backlight_save_event_cb(lv_event_t *e);
+static void settings_slider_key_event_cb(lv_event_t *e);
+static void settings_slider_defocus_event_cb(lv_event_t *e);
+static void settings_slider_edit_set(lv_obj_t *slider, bool editing);
+static void settings_slider_adjust(lv_obj_t *slider, int delta);
 
 static void settings_rotate_toggle_event_cb(lv_event_t *e);
 
@@ -667,6 +673,78 @@ static void app_ui_focus_style_apply(lv_obj_t *obj)
                                   LV_PART_MAIN | LV_STATE_FOCUSED);
     lv_obj_set_style_shadow_opa(obj, LV_OPA_70,
                                 LV_PART_MAIN | LV_STATE_FOCUSED);
+}
+
+static void settings_slider_edit_set(lv_obj_t *slider, bool editing)
+{
+    s_settings_slider_editing = editing;
+
+#if BOARD_HAS_M5_BUTTONS
+    lv_group_t *group = lv_group_get_default();
+    if (group) {
+        lv_group_set_editing(group, editing);
+    }
+#endif
+
+    if (!slider) {
+        return;
+    }
+
+    if (editing) {
+        lv_obj_add_state(slider, LV_STATE_USER_1);
+        app_ui_update_status("左右调节，中键确认");
+    } else {
+        lv_obj_clear_state(slider, LV_STATE_USER_1);
+    }
+}
+
+static void settings_slider_adjust(lv_obj_t *slider, int delta)
+{
+    if (!slider) {
+        return;
+    }
+
+    int value = lv_slider_get_value(slider) + delta;
+    int min = lv_slider_get_min_value(slider);
+    int max = lv_slider_get_max_value(slider);
+
+    if (value < min) {
+        value = min;
+    }
+
+    if (value > max) {
+        value = max;
+    }
+
+    lv_slider_set_value(slider, value, LV_ANIM_OFF);
+    lv_event_send(slider, LV_EVENT_VALUE_CHANGED, NULL);
+}
+
+static void settings_slider_key_event_cb(lv_event_t *e)
+{
+    lv_obj_t *slider = lv_event_get_target(e);
+    uint32_t key = lv_event_get_key(e);
+
+    if (key == LV_KEY_ENTER) {
+        settings_slider_edit_set(slider, !s_settings_slider_editing);
+        return;
+    }
+
+    if (!s_settings_slider_editing) {
+        return;
+    }
+
+    if (key == LV_KEY_LEFT) {
+        settings_slider_adjust(slider, -5);
+    } else if (key == LV_KEY_RIGHT) {
+        settings_slider_adjust(slider, 5);
+    }
+}
+
+static void settings_slider_defocus_event_cb(lv_event_t *e)
+{
+    lv_obj_t *slider = lv_event_get_target(e);
+    settings_slider_edit_set(slider, false);
 }
 
 static void app_ui_focus_collect(lv_group_t *group, lv_obj_t *obj)
@@ -2167,6 +2245,9 @@ static void settings_hide_keyboard(void)
 
 static void settings_show_home(void)
 {
+    settings_slider_edit_set(s_slider_volume, false);
+    settings_slider_edit_set(s_slider_backlight, false);
+
     settings_hide_keyboard();
 
     if (s_settings_home) {
@@ -2456,6 +2537,7 @@ static void settings_volume_open_event_cb(lv_event_t *e)
 
     const app_settings_t *cfg = app_settings_get();
 
+    settings_slider_edit_set(s_slider_backlight, false);
     settings_hide_keyboard();
 
     if (s_settings_home) {
@@ -2482,6 +2564,10 @@ static void settings_volume_open_event_cb(lv_event_t *e)
     }
 
     app_ui_focus_rebuild_active();
+
+    if (s_slider_volume) {
+        lv_group_focus_obj(s_slider_volume);
+    }
 }
 
 static void settings_volume_slider_event_cb(lv_event_t *e)
@@ -2568,6 +2654,7 @@ static void settings_backlight_open_event_cb(lv_event_t *e)
 
     const app_settings_t *cfg = app_settings_get();
 
+    settings_slider_edit_set(s_slider_volume, false);
     settings_hide_keyboard();
 
     if (s_settings_home) {
@@ -2612,6 +2699,10 @@ static void settings_backlight_open_event_cb(lv_event_t *e)
     }
 
     app_ui_focus_rebuild_active();
+
+    if (s_slider_backlight) {
+        lv_group_focus_obj(s_slider_backlight);
+    }
 }
 
 void app_ui_wake_from_idle(void)
@@ -3235,10 +3326,27 @@ static void create_settings_volume_page(lv_obj_t *parent)
     lv_obj_set_style_bg_opa(s_slider_volume,
                             LV_OPA_COVER,
                             LV_PART_KNOB);
+    lv_obj_set_style_outline_color(s_slider_volume,
+                                   UI_COLOR_ORANGE,
+                                   LV_PART_MAIN | LV_STATE_USER_1);
+    lv_obj_set_style_outline_width(s_slider_volume,
+                                   4,
+                                   LV_PART_MAIN | LV_STATE_USER_1);
+    lv_obj_set_style_outline_pad(s_slider_volume,
+                                 4,
+                                 LV_PART_MAIN | LV_STATE_USER_1);
 
     lv_obj_add_event_cb(s_slider_volume,
                         settings_volume_slider_event_cb,
                         LV_EVENT_VALUE_CHANGED,
+                        NULL);
+    lv_obj_add_event_cb(s_slider_volume,
+                        settings_slider_key_event_cb,
+                        LV_EVENT_KEY,
+                        NULL);
+    lv_obj_add_event_cb(s_slider_volume,
+                        settings_slider_defocus_event_cb,
+                        LV_EVENT_DEFOCUSED,
                         NULL);
 
     lv_obj_t *btn_back = settings_create_action_button(
@@ -3309,10 +3417,27 @@ static void create_settings_backlight_page(lv_obj_t *parent)
     lv_obj_set_style_bg_opa(s_slider_backlight,
                             LV_OPA_COVER,
                             LV_PART_KNOB);
+    lv_obj_set_style_outline_color(s_slider_backlight,
+                                   UI_COLOR_ORANGE,
+                                   LV_PART_MAIN | LV_STATE_USER_1);
+    lv_obj_set_style_outline_width(s_slider_backlight,
+                                   4,
+                                   LV_PART_MAIN | LV_STATE_USER_1);
+    lv_obj_set_style_outline_pad(s_slider_backlight,
+                                 4,
+                                 LV_PART_MAIN | LV_STATE_USER_1);
 
     lv_obj_add_event_cb(s_slider_backlight,
                         settings_backlight_slider_event_cb,
                         LV_EVENT_VALUE_CHANGED,
+                        NULL);
+    lv_obj_add_event_cb(s_slider_backlight,
+                        settings_slider_key_event_cb,
+                        LV_EVENT_KEY,
+                        NULL);
+    lv_obj_add_event_cb(s_slider_backlight,
+                        settings_slider_defocus_event_cb,
+                        LV_EVENT_DEFOCUSED,
                         NULL);
 
     lv_obj_t *btn_back = settings_create_action_button(
@@ -4663,7 +4788,7 @@ static void create_bottom_area(lv_obj_t *parent)
     s_label_bottom_status = lv_label_create(s_bottom_area);
     lv_label_set_text(s_label_bottom_status, "--");
     label_set_color(s_label_bottom_status, UI_COLOR_WHITE);
-    label_set_font(s_label_bottom_status, ui_font_status());
+    label_set_font(s_label_bottom_status, ui_font_cn());
 
     lv_obj_set_width(s_label_bottom_status, 170);
     lv_obj_set_style_text_align(s_label_bottom_status,

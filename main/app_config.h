@@ -43,7 +43,7 @@
  *
  * 该文本会显示在设置页右上角。
  */
-#define APP_VERSION_TEXT "v1.2.2"
+#define APP_VERSION_TEXT "v1.2.3"
 
 /* -------------------------------------------------------------------------- */
 /* Default identity                                                           */
@@ -54,7 +54,7 @@
  *
  * 首次启动或 NVS 配置无效时使用。
  */
-#define APP_DEFAULT_OWNER_CALLSIGN "BI8SIG"
+#define APP_DEFAULT_OWNER_CALLSIGN "BH1JSS"
 
 /* -------------------------------------------------------------------------- */
 /* Default WiFi configuration                                                 */
@@ -92,7 +92,7 @@
  * 设置页中用户只需要填写该 Host，例如：
  *
  * @code
- * 192.168.3.165
+ * 192.168.31.146
  * example.com:8080
  * @endcode
  *
@@ -104,7 +104,7 @@
  * ws://<host>/ws
  * @endcode
  */
-#define DEFAULT_FMO_HOST        "192.168.3.165"
+#define DEFAULT_FMO_HOST        "192.168.31.146"
 
 /**
  * @brief 默认音频 WebSocket URL。
@@ -113,7 +113,7 @@
  * 当前新版配置逻辑通常会根据 DEFAULT_FMO_HOST 自动生成该 URL。
  * 这里保留用于兼容旧代码或调试。
  */
-#define DEFAULT_WS_AUDIO_URL    "ws://192.168.3.165/audio"
+#define DEFAULT_WS_AUDIO_URL    "ws://192.168.31.146/audio"
 
 /**
  * @brief 默认事件 WebSocket URL。
@@ -121,7 +121,7 @@
  * @note
  * 当前新版配置逻辑通常会根据 DEFAULT_FMO_HOST 自动生成该 URL。
  */
-#define DEFAULT_WS_EVENT_URL    "ws://192.168.3.165/events"
+#define DEFAULT_WS_EVENT_URL    "ws://192.168.31.146/events"
 
 /**
  * @brief 默认站点 WebSocket URL。
@@ -129,7 +129,7 @@
  * @note
  * 当前新版配置逻辑通常会根据 DEFAULT_FMO_HOST 自动生成该 URL。
  */
-#define DEFAULT_WS_STATION_URL  "ws://192.168.3.165/ws"
+#define DEFAULT_WS_STATION_URL  "ws://192.168.31.146/ws"
 
 /* -------------------------------------------------------------------------- */
 /* Default audio and display settings                                         */

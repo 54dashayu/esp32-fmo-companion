@@ -46,6 +46,7 @@
 /* Project headers ---------------------------------------------------------- */
 #include "app_power_save.h"
 #include "app_config.h"
+#include "app_led.h"
 #include "app_settings.h"
 #include "app_ui.h"
 #include "audio_output.h"
@@ -211,7 +212,7 @@ void app_main(void)
     lv_port_disp_init();
 
     /*
-     * 7. 初始化触摸。
+     * 7. 初始化触摸/按键。
      */
     lv_port_indev_init();
 
@@ -248,19 +249,25 @@ void app_main(void)
     ESP_LOGI(TAG, "ui created");
 
     /*
-     * 11. 初始化音频输出抽象层。
+     * 11. 初始化侧边 RGB 灯带。
+     * 默认关闭，M5 Fire / 带灯带机型可在 board_config.h 中启用。
+     */
+    app_led_init();
+
+    /*
+     * 12. 初始化音频输出抽象层。
      *
      * 需要在 audio_ws 播放任务真正写入音频前完成。
      */
     ESP_ERROR_CHECK(audio_output_init());
 
     /*
-     * 12. 启动 WiFi。
+     * 13. 启动 WiFi。
      */
     ESP_ERROR_CHECK(wifi_manager_start());
 
     /*
-     * 13. 启动 WiFi RSSI 周期更新任务。
+     * 14. 启动 WiFi RSSI 周期更新任务。
      */
     BaseType_t task_ret = xTaskCreate(wifi_rssi_task,
                                       "wifi_rssi",
@@ -273,7 +280,7 @@ void app_main(void)
     }
 
     /*
-     * 14. 创建 WebSocket 启动任务。
+     * 15. 创建 WebSocket 启动任务。
      *
      * 该任务会等待 WiFi 连接成功后调用 audio_ws_start()。
      */
@@ -288,12 +295,12 @@ void app_main(void)
     }
 
     /*
-     * 15. 启动电池监测。
+     * 16. 启动电池监测。
      */
     ESP_ERROR_CHECK(battery_monitor_start());
 
     /*
-     * 16. LVGL 主循环。
+     * 17. LVGL 主循环。
      *
      * 当前项目中 LVGL 对象操作必须在该主循环上下文或
      * lv_async_call() 回调上下文中执行。

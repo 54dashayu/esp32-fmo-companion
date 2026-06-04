@@ -18,6 +18,7 @@ idf_component_register(
         "audio_output.c"
         "bt_audio.c"
         "app_power_save.c"
+        "app_led.c"
     INCLUDE_DIRS
         "."
         "fonts"
@@ -34,4 +35,5 @@ idf_component_register(
         lvgl
         lv_porting
         lvgl_esp32_drivers
+        led_strip
 )

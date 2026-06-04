@@ -17,6 +17,10 @@
 #include "lvgl/src/extra/widgets/keyboard/lv_keyboard.h"
 #endif
 
+#if LV_USE_SLIDER
+#include "lvgl/src/widgets/lv_slider.h"
+#endif
+
 #if !defined(CONFIG_LV_TOUCH_CONTROLLER_NONE)
 #include "touch_driver.h"
 #endif
@@ -56,6 +60,7 @@ static void mouse_get_xy(lv_coord_t * x, lv_coord_t * y);
 static void keypad_init(void);
 static void keypad_read(lv_indev_drv_t * indev_drv, lv_indev_data_t * data);
 static bool keypad_is_keyboard_focused(void);
+static bool keypad_is_slider_editing(void);
 static uint32_t keypad_get_key(void);
 
 static void encoder_init(void);
@@ -334,14 +339,19 @@ static void keypad_read(lv_indev_drv_t * indev_drv, lv_indev_data_t * data)
     if(act_key != 0) {
         data->state = LV_INDEV_STATE_PR;
         bool keyboard_focused = keypad_is_keyboard_focused();
+        bool slider_editing = keypad_is_slider_editing();
 
         /*Translate the keys to LVGL control characters according to your key definitions*/
         switch(act_key) {
             case 1:
-                act_key = keyboard_focused ? LV_KEY_RIGHT : LV_KEY_NEXT;
+                act_key = (keyboard_focused || slider_editing) ?
+                    LV_KEY_RIGHT :
+                    LV_KEY_NEXT;
                 break;
             case 2:
-                act_key = keyboard_focused ? LV_KEY_LEFT : LV_KEY_PREV;
+                act_key = (keyboard_focused || slider_editing) ?
+                    LV_KEY_LEFT :
+                    LV_KEY_PREV;
                 break;
             case 3:
                 act_key = LV_KEY_LEFT;
@@ -373,6 +383,21 @@ static bool keypad_is_keyboard_focused(void)
 
     lv_obj_t *focused = lv_group_get_focused(group);
     return focused && lv_obj_check_type(focused, &lv_keyboard_class);
+#else
+    return false;
+#endif
+}
+
+static bool keypad_is_slider_editing(void)
+{
+#if LV_PORT_USE_M5STACK_BUTTONS && LV_USE_SLIDER
+    lv_group_t *group = lv_group_get_default();
+    if (!group || !lv_group_get_editing(group)) {
+        return false;
+    }
+
+    lv_obj_t *focused = lv_group_get_focused(group);
+    return focused && lv_obj_check_type(focused, &lv_slider_class);
 #else
     return false;
 #endif

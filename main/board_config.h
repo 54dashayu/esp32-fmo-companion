@@ -205,6 +205,21 @@ extern "C" {
  */
 #define BOARD_BAT_ADC_GPIO          GPIO_NUM_35
 
+/* -------------------------------------------------------------------------- */
+/* RGB side LED strip: M5Stack Core / Fire                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * @brief M5 Core / Fire 侧边 RGB 灯带使能。
+ *
+ * Fire/Core 带灯带的机型通常使用 GPIO15 驱动 10 颗 WS2812/SK6812 LED。
+ * M5 Fire / 带侧边灯带机型默认启用。
+ * 不带灯带的 M5 Core Basic 可将 BOARD_HAS_RGB_LED_STRIP 改为 0。
+ */
+#define BOARD_HAS_RGB_LED_STRIP     1
+#define BOARD_RGB_LED_GPIO          GPIO_NUM_15
+#define BOARD_RGB_LED_COUNT         10
+
 #ifdef __cplusplus
 }
 #endif
