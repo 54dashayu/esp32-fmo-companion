@@ -1,5 +1,93 @@
 # 基于ESP32开发板的FMO伴侣
 
+本 Fork 基于 [zhaozhengde/esp32-fmo-companion](https://github.com/zhaozhengde/esp32-fmo-companion) 原项目继续开发，当前主要适配 M5Stack Core Basic、M5 Fire 等设备。
+
+## M5 Core Fork v0.2.0
+
+当前固件显示版本为 **v1.2.3**。
+
+Windows 用户推荐从 [M5 Core Windows 刷写包 v0.2.0](https://github.com/54dashayu/esp32-fmo-companion/releases/tag/m5core-flasher-v0.2.0) 下载 `fmo-companion-m5core-windows-flasher-v0.2.0.zip`，完整解压后运行 `flash_m5core.bat`。
+
+### Bug 修复
+
+#### 设置菜单操作修复
+
+- 修复音量和屏幕亮度无法通过 M5 正面 A/B/C 三键调节的问题；
+- 进入音量或亮度页面后，滑块会自动获得焦点；
+- 按中间键进入调节模式，滑块显示橙色高亮边框；
+- 使用左右键调节数值，每次增加或减少 5；
+- 再次按中间键确认并退出调节模式；
+- 离开页面时自动退出调节状态，避免按键操作异常。
+
+#### 启动及 Windows 刷写修复
+
+- Windows 刷写工具使用完整 merged 固件，从 `0x0` 地址开始刷写；
+- 修复只将应用程序 bin 刷入错误地址后，设备黑屏、无法启动的问题；
+- 刷写包内置便携 Python 和 esptool，不需要另外安装开发环境；
+- 提供普通刷写脚本和低速刷写脚本，改善部分 USB 或供电不稳定设备的刷写成功率。
+
+#### LED 节能模式修复
+
+- 修复设备进入节能模式时，如果正在通联，LED 灯带会一直保持点亮的问题；
+- 进入节能模式时立即关闭灯带并清除当前 LED 状态；
+- 节能模式期间忽略新的通联和呼号 LED 提醒；
+- 退出节能模式后恢复正常 LED 提醒功能。
+
+#### 状态栏中文显示修复
+
+- 修复未连接 WiFi 时，底部状态栏中“连接”等中文显示为乱码方框的问题；
+- WiFi、FMO 和其他底部状态提示统一使用完整中文字体。
+
+### 新增功能
+
+#### 通联状态 LED 提示
+
+支持连接在 **GPIO15** 的 **10 颗 WS2812/GRB LED 灯带**：
+
+- 接收到普通呼号通联时，LED 灯带持续亮绿色；
+- 本机呼号正在通联时，LED 灯带持续亮红色；
+- 通联结束后，LED 灯带自动关闭；
+- 呼号提醒动画结束后，如果通联仍在继续，自动恢复红色或绿色通联状态灯。
+
+#### 新呼号 LED 提醒
+
+固件会将收到的呼号与同步后的通联记录进行比对：
+
+- **从未通联过的呼号**：彩虹色呼吸灯闪烁 2 秒；
+- **以前通联过，但当天尚未通联的呼号**：橙色呼吸灯闪烁 2 秒；
+- **最近 15 分钟内已经出现或通联过的呼号**：蓝色呼吸灯闪烁 2 秒。
+
+呼号比较会自动忽略大小写和多余空格。
+
+#### 默认设置更新
+
+- 默认本机呼号修改为 `BH1JSS`；
+- 默认 FMO 地址修改为 `192.168.31.146`；
+- WebSocket 音频、事件和站点地址会根据 FMO 地址自动生成；
+- 如果设备中保存的仍是旧默认呼号 `BI8SIG` 或旧默认地址 `192.168.3.165`，升级后会自动迁移到新默认值；
+- 用户手动修改过的其他呼号或 FMO 地址不会被覆盖。
+
+### 下载文件说明
+
+- `fmo-companion-m5core-windows-flasher-v0.2.0.zip`：推荐 Windows 刷写工具包；
+- `fmo-companion-m5core-simple-windows-flasher-v0.2.0.zip`：简化版 Windows 刷写工具包；
+- `fmo-companion-m5core-merged-v0.2.0.bin`：包含 Bootloader、分区表和应用程序的完整固件，应从 `0x0` 地址刷写；
+- `fmo-companion-m5core-app-only-v0.2.0.bin`：仅应用程序固件，只适合熟悉 ESP-IDF 分区和刷写地址的用户；
+- `fmo-companion-m5core-firmware-v0.2.0.zip`：包含完整固件、app-only 固件和 SHA-256 校验文件。
+
+完整 merged 固件 SHA-256：
+
+`78b3ca1bc038c5bb5a96f752215ed4ff5c8c3183e9b25b727332ba305fbdf8cf`
+
+### 注意事项
+
+- 刷写前请完整解压 Windows 刷写工具包；
+- 刷写过程中请勿拔掉 USB；
+- LED 提示功能需要设备具有兼容的 GPIO15 WS2812 灯带；
+- 普通不带 LED 灯带的设备仍可正常使用其他功能。
+
+---
+
 ## 项目背景
 
 FMO，即 **NFM over Internet**，可以理解为“互联网模拟通联”。
