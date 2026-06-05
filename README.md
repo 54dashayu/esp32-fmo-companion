@@ -71,7 +71,7 @@ Windows 用户推荐从 [M5 Core Windows 刷写包 v0.2.0](https://github.com/54
 
 完整 merged 固件 SHA-256：
 
-`f340977c5cea933b9c8e90006cd048d402bd49f99cf8c063a6a42f94495e90cc`
+`7623ff905ab0ceff48c794c8e87559fb0d0c36ad7a500b2ab932f43657d451ec`
 
 ### 注意事项
 
