@@ -99,7 +99,6 @@ static bool s_current_qso_active = false;
 typedef struct {
     char callsign[EVENT_QSO_CALLSIGN_MAX_LEN];
     time_t last_qso_time;
-    int64_t first_seen_us;
     bool valid;
 } event_qso_call_cache_item_t;
 
@@ -346,8 +345,6 @@ static void event_parser_qso_cache_update(const char *callsign,
         return;
     }
 
-    int64_t now_us = esp_timer_get_time();
-
     portENTER_CRITICAL(&s_qso_call_cache_mux);
 
     int index = event_parser_qso_cache_find_locked(normalized);
@@ -358,7 +355,6 @@ static void event_parser_qso_cache_update(const char *callsign,
                  sizeof(s_qso_call_cache[index].callsign),
                  "%s",
                  normalized);
-        s_qso_call_cache[index].first_seen_us = now_us;
         s_qso_call_cache[index].valid = true;
     }
 
@@ -385,8 +381,6 @@ static void event_parser_qso_cache_notify_if_needed(const char *callsign)
 
     bool found = false;
     time_t last_qso_time = 0;
-    int64_t first_seen_us = 0;
-    int64_t now_us = esp_timer_get_time();
 
     portENTER_CRITICAL(&s_qso_call_cache_mux);
 
@@ -394,14 +388,15 @@ static void event_parser_qso_cache_notify_if_needed(const char *callsign)
     if (index >= 0) {
         found = true;
         last_qso_time = s_qso_call_cache[index].last_qso_time;
-        first_seen_us = s_qso_call_cache[index].first_seen_us;
     }
 
     portEXIT_CRITICAL(&s_qso_call_cache_mux);
 
-    if (!found) {
+    if (!found || last_qso_time == 0) {
         app_led_notify_callsign(APP_LED_CALL_ALERT_NEVER);
-        event_parser_qso_cache_update(normalized, 0);
+        if (!found) {
+            event_parser_qso_cache_update(normalized, 0);
+        }
         return;
     }
 
@@ -414,17 +409,7 @@ static void event_parser_qso_cache_notify_if_needed(const char *callsign)
         return;
     }
 
-    if (last_qso_time == 0 &&
-        first_seen_us > 0 &&
-        now_us > first_seen_us &&
-        now_us - first_seen_us <=
-            (int64_t)EVENT_QSO_RECENT_WINDOW_SEC * 1000000LL) {
-        app_led_notify_callsign(APP_LED_CALL_ALERT_RECENT_15_MIN);
-        return;
-    }
-
-    if (last_qso_time == 0 ||
-        (now > 0 && !event_parser_same_local_day(now, last_qso_time))) {
+    if (now > 0 && !event_parser_same_local_day(now, last_qso_time)) {
         app_led_notify_callsign(APP_LED_CALL_ALERT_NOT_TODAY);
     }
 }
