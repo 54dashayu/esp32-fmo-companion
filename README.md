@@ -51,6 +51,7 @@ Windows 用户推荐从 [M5 Core Windows 刷写包 v0.2.0](https://github.com/54
 - **最近 15 分钟内已经出现或通联过的呼号**：蓝色呼吸灯闪烁 2 秒。
 
 呼号比较会自动忽略大小写和多余空格。
+设置中的本机呼号不会触发上述新呼号动画，本机通联时仅显示红色常亮提示。
 
 #### 默认设置更新
 
@@ -70,7 +71,7 @@ Windows 用户推荐从 [M5 Core Windows 刷写包 v0.2.0](https://github.com/54
 
 完整 merged 固件 SHA-256：
 
-`78b3ca1bc038c5bb5a96f752215ed4ff5c8c3183e9b25b727332ba305fbdf8cf`
+`f340977c5cea933b9c8e90006cd048d402bd49f99cf8c063a6a42f94495e90cc`
 
 ### 注意事项
 
