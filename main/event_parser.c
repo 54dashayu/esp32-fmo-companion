@@ -40,7 +40,9 @@
 #include "esp_log.h"
 
 /* Project headers ---------------------------------------------------------- */
+#include "app_config.h"
 #include "app_led.h"
+#include "app_settings.h"
 #include "audio_ws.h"
 #include "ui_async.h"
 
@@ -123,6 +125,7 @@ static void event_parser_finish_current_qso(const char *fallback_callsign);
 static void event_parser_qso_cache_update(const char *callsign,
                                           time_t qso_time);
 static void event_parser_qso_cache_notify_if_needed(const char *callsign);
+static bool event_parser_callsign_is_owner(const char *callsign);
 static bool event_parser_callsign_normalize(char *dst,
                                             size_t dst_size,
                                             const char *src);
@@ -376,6 +379,10 @@ static void event_parser_qso_cache_notify_if_needed(const char *callsign)
         return;
     }
 
+    if (event_parser_callsign_is_owner(normalized)) {
+        return;
+    }
+
     bool found = false;
     time_t last_qso_time = 0;
     int64_t first_seen_us = 0;
@@ -420,6 +427,23 @@ static void event_parser_qso_cache_notify_if_needed(const char *callsign)
         (now > 0 && !event_parser_same_local_day(now, last_qso_time))) {
         app_led_notify_callsign(APP_LED_CALL_ALERT_NOT_TODAY);
     }
+}
+
+static bool event_parser_callsign_is_owner(const char *callsign)
+{
+    const app_settings_t *cfg = app_settings_get();
+    const char *owner = (cfg && cfg->owner_callsign[0]) ?
+        cfg->owner_callsign :
+        APP_DEFAULT_OWNER_CALLSIGN;
+
+    char normalized_owner[EVENT_QSO_CALLSIGN_MAX_LEN];
+    if (!event_parser_callsign_normalize(normalized_owner,
+                                         sizeof(normalized_owner),
+                                         owner)) {
+        return false;
+    }
+
+    return strcmp(callsign, normalized_owner) == 0;
 }
 
 static bool event_parser_same_local_day(time_t a, time_t b)
