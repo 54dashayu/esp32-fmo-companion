@@ -2,7 +2,7 @@
 
 让 M5Stack Core 一代成为一个可以长期摆放、实时监控和守听的 FMO 远程伴侣。
 
-本项目基于 [zhaozhengde/esp32-fmo-companion](https://github.com/zhaozhengde/esp32-fmo-companion) 原项目继续开发，针对 M5Stack Core Basic / M5Stack Core 一代硬件进行了专项适配和优化。项目目标不是替代 FMO 主机，而是让 M5 Core 通过 WiFi 或远程网络连接 FMO，作为一个小屏伴侣终端显示当前通联、站点、QSO 信息，并提供守听和状态提示能力。
+本项目是面向 M5Stack Core Basic / M5Stack Core 一代硬件的 FMO 伴侣固件，针对 M5 Core 的屏幕、实体按键、菜单层级、网络配置和长期守听场景进行了专项适配和优化。项目目标不是替代 FMO 主机，而是让 M5 Core 通过 WiFi 或远程网络连接 FMO，作为一个小屏伴侣终端显示当前通联、站点、QSO 信息，并提供守听和状态提示能力。
 
 ## V2.0.0
 
@@ -18,7 +18,7 @@ Windows 用户推荐下载 GitHub Release 中的：
 
 FMO 是面向业余无线电爱好者的互联网模拟通联系统。本项目希望把 FMO 的状态监控、守听和常用操作放到一个独立的 M5 Core 小终端上，让它可以放在桌面、台站旁或远程值守环境中持续工作。
 
-这个 fork 的主要工作包括：
+本项目的主要工作包括：
 
 - 适配 M5 Core 一代 320x240 屏幕；
 - 使用正面 A/B/C 三个实体按键完成主要操作；
@@ -166,9 +166,9 @@ idf.py -p /dev/tty.usbserial-xxxx -b 115200 flash
 
 ## 项目关系
 
-本项目是原 FMO 伴侣项目的 M5 Core 定向适配 fork。感谢原作者和 FMO 生态中各位开发者、测试者提供的基础工作和反馈。
+本项目的早期工作参考并基于 [zhaozhengde/esp32-fmo-companion](https://github.com/zhaozhengde/esp32-fmo-companion) 原项目，在此向原作者和 FMO 生态中的开发者、测试者表示感谢。
 
-本 fork 的目标是把 M5 Core 打造成一个更易用、更稳定、更适合长期运行的 FMO 远程伴侣终端。
+V2.0.0 起，本项目作为 M5 Core 定向适配版独立维护，目标是把 M5 Core 打造成一个更易用、更稳定、更适合长期运行的 FMO 远程伴侣终端。
 
 ## 许可证
 
