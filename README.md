@@ -2,9 +2,9 @@
 
 本 Fork 基于 [zhaozhengde/esp32-fmo-companion](https://github.com/zhaozhengde/esp32-fmo-companion) 原项目继续开发，当前主要适配 M5Stack Core Basic、M5 Fire 等设备。
 
-## M5 Core Fork v0.2.0
+## M5 Core FMO-Companion v0.2.0
 
-当前固件显示版本为 **v1.2.3**。
+当前固件显示版本为 **v2.0.0**。
 
 Windows 用户推荐从 [M5 Core Windows 刷写包 v0.2.0](https://github.com/54dashayu/esp32-fmo-companion/releases/tag/m5core-flasher-v0.2.0) 下载 `fmo-companion-m5core-windows-flasher-v0.2.0.zip`，完整解压后运行 `flash_m5core.bat`。
 
@@ -89,7 +89,7 @@ FMO，即 **NFM over Internet**，可以理解为“互联网模拟通联”。
 
 FMO 主机由 **BG5ESN** 开发，是一套面向业余无线电爱好者设计的互联网对讲硬件系统。
 
----
+---—————————以下3为原项目介绍————————————————
 
 ## FMO 伴侣的开发目的
 
