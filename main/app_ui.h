@@ -225,6 +225,13 @@ void app_ui_exit_power_save_clock(void);
  */
 bool app_ui_is_power_save_clock(void);
 
+/**
+ * @brief 设置省电暗化层。
+ *
+ * 与省电时钟页不同，该模式保留当前画面，只降低视觉亮度/对比度。
+ */
+void app_ui_set_power_save_visual(bool enabled);
+
 /* -------------------------------------------------------------------------- */
 /* QSO sync popup                                                             */
 /* -------------------------------------------------------------------------- */

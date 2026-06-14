@@ -23,6 +23,7 @@
 #include <stdbool.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* ESP-IDF headers ---------------------------------------------------------- */
@@ -104,6 +105,7 @@ static esp_err_t copy_owner_callsign(char *dst,
 
 static bool wifi_ssid_is_valid(const char *ssid);
 static bool wifi_password_is_valid(const char *password);
+static bool fmo_host_is_valid(const char *host);
 
 static esp_err_t copy_wifi_ssid(char *dst,
                                 size_t dst_size,
@@ -114,6 +116,330 @@ static esp_err_t copy_wifi_password(char *dst,
 
 static bool app_settings_is_valid(const app_settings_t *cfg);
 static void app_settings_sanitize(app_settings_t *cfg);
+static bool screen_rotation_is_valid(uint16_t rotation);
+static void app_settings_sync_active_profile_to_legacy(app_settings_t *cfg);
+static void app_settings_sync_legacy_to_profile(app_settings_t *cfg,
+                                                uint8_t index);
+static void app_settings_profile_set_default_name(app_settings_t *cfg,
+                                                  uint8_t index);
+
+typedef struct {
+    char name[APP_PROFILE_NAME_MAX];
+    char wifi_ssid[33];
+    char wifi_password[64];
+    char fmo_host[APP_FMO_HOST_MAX];
+} app_connection_profile_legacy_t;
+
+typedef struct {
+    uint32_t version;
+    uint8_t backlight_percent;
+    uint8_t audio_volume;
+    uint8_t idle_image_enabled;
+    char wifi_ssid[33];
+    char wifi_password[64];
+    char fmo_host[64];
+    char ws_audio_url[128];
+    char ws_event_url[128];
+    char ws_station_url[128];
+    uint32_t ws_station_current_refresh_ms;
+    uint32_t ws_station_list_refresh_ms;
+    uint32_t idle_image_timeout_ms;
+    uint16_t battery_empty_mv;
+    uint16_t battery_full_mv;
+    int16_t battery_offset_mv;
+    char owner_callsign[16];
+    uint32_t qso_count;
+    int32_t qso_latest_log_id;
+    bool qso_count_valid;
+    bool screen_rotate_180;
+} app_settings_legacy_v9_t;
+
+typedef struct {
+    uint32_t version;
+    uint8_t backlight_percent;
+    uint8_t audio_volume;
+    uint8_t idle_image_enabled;
+    char wifi_ssid[33];
+    char wifi_password[64];
+    char fmo_host[APP_FMO_HOST_MAX];
+    app_connection_profile_legacy_t connection_profiles[APP_CONNECTION_PROFILE_MAX];
+    uint8_t active_profile_index;
+    char ws_audio_url[128];
+    char ws_event_url[128];
+    char ws_station_url[128];
+    uint32_t ws_station_current_refresh_ms;
+    uint32_t ws_station_list_refresh_ms;
+    uint32_t idle_image_timeout_ms;
+    uint16_t battery_empty_mv;
+    uint16_t battery_full_mv;
+    int16_t battery_offset_mv;
+    char owner_callsign[16];
+    uint32_t qso_count;
+    int32_t qso_latest_log_id;
+    bool qso_count_valid;
+    bool screen_rotate_180;
+} app_settings_legacy_v10_t;
+
+typedef struct {
+    uint32_t version;
+    uint8_t backlight_percent;
+    uint8_t audio_volume;
+    uint8_t idle_image_enabled;
+    char wifi_ssid[33];
+    char wifi_password[64];
+    char fmo_host[APP_FMO_HOST_MAX];
+    app_connection_profile_legacy_t connection_profiles[APP_CONNECTION_PROFILE_MAX];
+    uint8_t active_profile_index;
+    char ws_audio_url[128];
+    char ws_event_url[128];
+    char ws_station_url[128];
+    uint32_t ws_station_current_refresh_ms;
+    uint32_t ws_station_list_refresh_ms;
+    uint32_t idle_image_timeout_ms;
+    uint16_t battery_empty_mv;
+    uint16_t battery_full_mv;
+    int16_t battery_offset_mv;
+    char owner_callsign[16];
+    uint32_t qso_count;
+    int32_t qso_latest_log_id;
+    bool qso_count_valid;
+    bool screen_rotate_180;
+    uint8_t ui_theme;
+} app_settings_legacy_v11_t;
+
+typedef struct {
+    uint32_t version;
+    uint8_t backlight_percent;
+    uint8_t audio_volume;
+    uint8_t idle_image_enabled;
+    char wifi_ssid[33];
+    char wifi_password[64];
+    char fmo_host[APP_FMO_HOST_MAX];
+    app_connection_profile_t connection_profiles[APP_CONNECTION_PROFILE_MAX];
+    uint8_t active_profile_index;
+    char ws_audio_url[128];
+    char ws_event_url[128];
+    char ws_station_url[128];
+    uint32_t ws_station_current_refresh_ms;
+    uint32_t ws_station_list_refresh_ms;
+    uint32_t idle_image_timeout_ms;
+    uint16_t battery_empty_mv;
+    uint16_t battery_full_mv;
+    int16_t battery_offset_mv;
+    char owner_callsign[16];
+    uint32_t qso_count;
+    int32_t qso_latest_log_id;
+    bool qso_count_valid;
+    bool screen_rotate_180;
+    uint8_t ui_theme;
+} app_settings_legacy_v12_t;
+
+static bool app_settings_migrate_legacy_v9(app_settings_t *dst,
+                                           const app_settings_legacy_v9_t *src)
+{
+    if (!dst || !src || src->version != 9) {
+        return false;
+    }
+
+    if (!is_c_string_terminated(src->wifi_ssid, sizeof(src->wifi_ssid)) ||
+        !is_c_string_terminated(src->wifi_password, sizeof(src->wifi_password)) ||
+        !is_c_string_terminated(src->fmo_host, sizeof(src->fmo_host)) ||
+        !is_c_string_terminated(src->owner_callsign,
+                                sizeof(src->owner_callsign))) {
+        return false;
+    }
+
+    app_settings_load_defaults(dst);
+
+    dst->backlight_percent = src->backlight_percent;
+    dst->audio_volume = src->audio_volume;
+    dst->idle_image_enabled = src->idle_image_enabled;
+    safe_strcpy(dst->wifi_ssid, sizeof(dst->wifi_ssid), src->wifi_ssid);
+    safe_strcpy(dst->wifi_password,
+                sizeof(dst->wifi_password),
+                src->wifi_password);
+    safe_strcpy(dst->fmo_host, sizeof(dst->fmo_host), src->fmo_host);
+    dst->ws_station_current_refresh_ms = src->ws_station_current_refresh_ms;
+    dst->ws_station_list_refresh_ms = src->ws_station_list_refresh_ms;
+    dst->idle_image_timeout_ms = src->idle_image_timeout_ms;
+    dst->battery_empty_mv = src->battery_empty_mv;
+    dst->battery_full_mv = src->battery_full_mv;
+    dst->battery_offset_mv = src->battery_offset_mv;
+    safe_strcpy(dst->owner_callsign,
+                sizeof(dst->owner_callsign),
+                src->owner_callsign);
+    dst->qso_count = src->qso_count;
+    dst->qso_latest_log_id = src->qso_latest_log_id;
+    dst->qso_count_valid = src->qso_count_valid;
+    dst->screen_rotate_180 = src->screen_rotate_180;
+    dst->screen_rotation =
+        src->screen_rotate_180 ? APP_SCREEN_ROTATION_180 : APP_SCREEN_ROTATION_0;
+    dst->ui_theme = APP_UI_THEME_DARK;
+    dst->active_profile_index = 0;
+
+    app_settings_sync_legacy_to_profile(dst, 0);
+    app_settings_sanitize(dst);
+
+    return true;
+}
+
+static bool app_settings_migrate_legacy_v10(app_settings_t *dst,
+                                            const app_settings_legacy_v10_t *src)
+{
+    if (!dst || !src || src->version != 10) {
+        return false;
+    }
+
+    app_settings_load_defaults(dst);
+
+    dst->backlight_percent = src->backlight_percent;
+    dst->audio_volume = src->audio_volume;
+    dst->idle_image_enabled = src->idle_image_enabled;
+    safe_strcpy(dst->wifi_ssid, sizeof(dst->wifi_ssid), src->wifi_ssid);
+    safe_strcpy(dst->wifi_password,
+                sizeof(dst->wifi_password),
+                src->wifi_password);
+    safe_strcpy(dst->fmo_host, sizeof(dst->fmo_host), src->fmo_host);
+    dst->active_profile_index = src->active_profile_index;
+    dst->ws_station_current_refresh_ms = src->ws_station_current_refresh_ms;
+    dst->ws_station_list_refresh_ms = src->ws_station_list_refresh_ms;
+    dst->idle_image_timeout_ms = src->idle_image_timeout_ms;
+    dst->battery_empty_mv = src->battery_empty_mv;
+    dst->battery_full_mv = src->battery_full_mv;
+    dst->battery_offset_mv = src->battery_offset_mv;
+    safe_strcpy(dst->owner_callsign,
+                sizeof(dst->owner_callsign),
+                src->owner_callsign);
+    dst->qso_count = src->qso_count;
+    dst->qso_latest_log_id = src->qso_latest_log_id;
+    dst->qso_count_valid = src->qso_count_valid;
+    dst->screen_rotate_180 = src->screen_rotate_180;
+    dst->screen_rotation =
+        src->screen_rotate_180 ? APP_SCREEN_ROTATION_180 : APP_SCREEN_ROTATION_0;
+    dst->version = APP_SETTINGS_VERSION;
+    dst->ui_theme = APP_UI_THEME_DARK;
+
+    for (uint8_t i = 0; i < APP_CONNECTION_PROFILE_MAX; i++) {
+        safe_strcpy(dst->connection_profiles[i].name,
+                    sizeof(dst->connection_profiles[i].name),
+                    src->connection_profiles[i].name);
+        safe_strcpy(dst->connection_profiles[i].wifi_ssid,
+                    sizeof(dst->connection_profiles[i].wifi_ssid),
+                    src->connection_profiles[i].wifi_ssid);
+        safe_strcpy(dst->connection_profiles[i].wifi_password,
+                    sizeof(dst->connection_profiles[i].wifi_password),
+                    src->connection_profiles[i].wifi_password);
+        safe_strcpy(dst->connection_profiles[i].fmo_host,
+                    sizeof(dst->connection_profiles[i].fmo_host),
+                    src->connection_profiles[i].fmo_host);
+        dst->connection_profiles[i].ddns_remote_enabled = false;
+    }
+
+    app_settings_sanitize(dst);
+
+    return true;
+}
+
+static bool app_settings_migrate_legacy_v11(app_settings_t *dst,
+                                            const app_settings_legacy_v11_t *src)
+{
+    if (!dst || !src || src->version != 11) {
+        return false;
+    }
+
+    app_settings_load_defaults(dst);
+
+    dst->backlight_percent = src->backlight_percent;
+    dst->audio_volume = src->audio_volume;
+    dst->idle_image_enabled = src->idle_image_enabled;
+    safe_strcpy(dst->wifi_ssid, sizeof(dst->wifi_ssid), src->wifi_ssid);
+    safe_strcpy(dst->wifi_password,
+                sizeof(dst->wifi_password),
+                src->wifi_password);
+    safe_strcpy(dst->fmo_host, sizeof(dst->fmo_host), src->fmo_host);
+    dst->active_profile_index = src->active_profile_index;
+    dst->ws_station_current_refresh_ms = src->ws_station_current_refresh_ms;
+    dst->ws_station_list_refresh_ms = src->ws_station_list_refresh_ms;
+    dst->idle_image_timeout_ms = src->idle_image_timeout_ms;
+    dst->battery_empty_mv = src->battery_empty_mv;
+    dst->battery_full_mv = src->battery_full_mv;
+    dst->battery_offset_mv = src->battery_offset_mv;
+    safe_strcpy(dst->owner_callsign,
+                sizeof(dst->owner_callsign),
+                src->owner_callsign);
+    dst->qso_count = src->qso_count;
+    dst->qso_latest_log_id = src->qso_latest_log_id;
+    dst->qso_count_valid = src->qso_count_valid;
+    dst->screen_rotate_180 = src->screen_rotate_180;
+    dst->screen_rotation =
+        src->screen_rotate_180 ? APP_SCREEN_ROTATION_180 : APP_SCREEN_ROTATION_0;
+    dst->ui_theme = src->ui_theme;
+    dst->version = APP_SETTINGS_VERSION;
+
+    for (uint8_t i = 0; i < APP_CONNECTION_PROFILE_MAX; i++) {
+        safe_strcpy(dst->connection_profiles[i].name,
+                    sizeof(dst->connection_profiles[i].name),
+                    src->connection_profiles[i].name);
+        safe_strcpy(dst->connection_profiles[i].wifi_ssid,
+                    sizeof(dst->connection_profiles[i].wifi_ssid),
+                    src->connection_profiles[i].wifi_ssid);
+        safe_strcpy(dst->connection_profiles[i].wifi_password,
+                    sizeof(dst->connection_profiles[i].wifi_password),
+                    src->connection_profiles[i].wifi_password);
+        safe_strcpy(dst->connection_profiles[i].fmo_host,
+                    sizeof(dst->connection_profiles[i].fmo_host),
+                    src->connection_profiles[i].fmo_host);
+        dst->connection_profiles[i].ddns_remote_enabled = false;
+    }
+
+    app_settings_sanitize(dst);
+
+    return true;
+}
+
+static bool app_settings_migrate_legacy_v12(app_settings_t *dst,
+                                            const app_settings_legacy_v12_t *src)
+{
+    if (!dst || !src || src->version != 12) {
+        return false;
+    }
+
+    app_settings_load_defaults(dst);
+
+    dst->backlight_percent = src->backlight_percent;
+    dst->audio_volume = src->audio_volume;
+    dst->idle_image_enabled = src->idle_image_enabled;
+    safe_strcpy(dst->wifi_ssid, sizeof(dst->wifi_ssid), src->wifi_ssid);
+    safe_strcpy(dst->wifi_password,
+                sizeof(dst->wifi_password),
+                src->wifi_password);
+    safe_strcpy(dst->fmo_host, sizeof(dst->fmo_host), src->fmo_host);
+    memcpy(dst->connection_profiles,
+           src->connection_profiles,
+           sizeof(dst->connection_profiles));
+    dst->active_profile_index = src->active_profile_index;
+    dst->ws_station_current_refresh_ms = src->ws_station_current_refresh_ms;
+    dst->ws_station_list_refresh_ms = src->ws_station_list_refresh_ms;
+    dst->idle_image_timeout_ms = src->idle_image_timeout_ms;
+    dst->battery_empty_mv = src->battery_empty_mv;
+    dst->battery_full_mv = src->battery_full_mv;
+    dst->battery_offset_mv = src->battery_offset_mv;
+    safe_strcpy(dst->owner_callsign,
+                sizeof(dst->owner_callsign),
+                src->owner_callsign);
+    dst->qso_count = src->qso_count;
+    dst->qso_latest_log_id = src->qso_latest_log_id;
+    dst->qso_count_valid = src->qso_count_valid;
+    dst->screen_rotate_180 = src->screen_rotate_180;
+    dst->screen_rotation =
+        src->screen_rotate_180 ? APP_SCREEN_ROTATION_180 : APP_SCREEN_ROTATION_0;
+    dst->ui_theme = src->ui_theme;
+    dst->version = APP_SETTINGS_VERSION;
+
+    app_settings_sanitize(dst);
+
+    return true;
+}
 
 /* -------------------------------------------------------------------------- */
 /* String helpers                                                             */
@@ -305,6 +631,40 @@ static bool wifi_password_is_valid(const char *password)
     return true;
 }
 
+static bool fmo_host_is_valid(const char *host)
+{
+    if (!host || host[0] == '\0') {
+        return false;
+    }
+
+    size_t len = strlen(host);
+    if (len >= APP_FMO_HOST_MAX) {
+        return false;
+    }
+
+    if (strstr(host, "://") || strchr(host, '/')) {
+        return false;
+    }
+
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)host[i];
+
+        if ((c >= 'A' && c <= 'Z') ||
+            (c >= 'a' && c <= 'z') ||
+            (c >= '0' && c <= '9') ||
+            c == '.' ||
+            c == '-' ||
+            c == '_' ||
+            c == ':') {
+            continue;
+        }
+
+        return false;
+    }
+
+    return true;
+}
+
 /**
  * @brief 复制 WiFi SSID。
  *
@@ -397,7 +757,7 @@ void app_settings_build_ws_urls(app_settings_t *cfg)
     /*
      * 如果 fmo_host 为空，回退到默认 host。
      */
-    if (!is_non_empty_string(cfg->fmo_host)) {
+    if (!fmo_host_is_valid(cfg->fmo_host)) {
         safe_strcpy(cfg->fmo_host, sizeof(cfg->fmo_host), DEFAULT_FMO_HOST);
     }
 
@@ -419,6 +779,78 @@ void app_settings_build_ws_urls(app_settings_t *cfg)
     cfg->ws_audio_url[sizeof(cfg->ws_audio_url) - 1] = '\0';
     cfg->ws_event_url[sizeof(cfg->ws_event_url) - 1] = '\0';
     cfg->ws_station_url[sizeof(cfg->ws_station_url) - 1] = '\0';
+}
+
+static void app_settings_profile_set_default_name(app_settings_t *cfg,
+                                                  uint8_t index)
+{
+    if (!cfg || index >= APP_CONNECTION_PROFILE_MAX) {
+        return;
+    }
+
+    if (cfg->connection_profiles[index].name[0] == '\0') {
+        snprintf(cfg->connection_profiles[index].name,
+                 sizeof(cfg->connection_profiles[index].name),
+                 "配置%u",
+                 (unsigned)(index + 1));
+    }
+
+    cfg->connection_profiles[index]
+        .name[sizeof(cfg->connection_profiles[index].name) - 1] = '\0';
+}
+
+static void app_settings_sync_legacy_to_profile(app_settings_t *cfg,
+                                                uint8_t index)
+{
+    if (!cfg || index >= APP_CONNECTION_PROFILE_MAX) {
+        return;
+    }
+
+    app_connection_profile_t *profile = &cfg->connection_profiles[index];
+
+    app_settings_profile_set_default_name(cfg, index);
+    safe_strcpy(profile->wifi_ssid,
+                sizeof(profile->wifi_ssid),
+                cfg->wifi_ssid);
+    safe_strcpy(profile->wifi_password,
+                sizeof(profile->wifi_password),
+                cfg->wifi_password);
+    safe_strcpy(profile->fmo_host,
+                sizeof(profile->fmo_host),
+                cfg->fmo_host);
+    profile->ddns_remote_enabled = false;
+}
+
+static void app_settings_sync_active_profile_to_legacy(app_settings_t *cfg)
+{
+    if (!cfg) {
+        return;
+    }
+
+    if (cfg->active_profile_index >= APP_CONNECTION_PROFILE_MAX) {
+        cfg->active_profile_index = 0;
+    }
+
+    app_connection_profile_t *profile =
+        &cfg->connection_profiles[cfg->active_profile_index];
+
+    app_settings_profile_set_default_name(cfg, cfg->active_profile_index);
+
+    if (profile->fmo_host[0] == '\0') {
+        safe_strcpy(profile->fmo_host,
+                    sizeof(profile->fmo_host),
+                    DEFAULT_FMO_HOST);
+    }
+
+    safe_strcpy(cfg->wifi_ssid,
+                sizeof(cfg->wifi_ssid),
+                profile->wifi_ssid);
+    safe_strcpy(cfg->wifi_password,
+                sizeof(cfg->wifi_password),
+                profile->wifi_password);
+    safe_strcpy(cfg->fmo_host,
+                sizeof(cfg->fmo_host),
+                profile->fmo_host);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -475,6 +907,13 @@ void app_settings_load_defaults(app_settings_t *cfg)
      * 三个 WebSocket URL 由 fmo_host 自动生成。
      */
     safe_strcpy(cfg->fmo_host, sizeof(cfg->fmo_host), DEFAULT_FMO_HOST);
+    cfg->active_profile_index = 0;
+    app_settings_sync_legacy_to_profile(cfg, 0);
+
+    for (uint8_t i = 1; i < APP_CONNECTION_PROFILE_MAX; i++) {
+        app_settings_profile_set_default_name(cfg, i);
+    }
+
     app_settings_build_ws_urls(cfg);
 
     cfg->ws_station_current_refresh_ms =
@@ -493,6 +932,8 @@ void app_settings_load_defaults(app_settings_t *cfg)
     cfg->qso_count_valid = false;
 
     cfg->screen_rotate_180 = false;
+    cfg->screen_rotation = APP_SCREEN_ROTATION_0;
+    cfg->ui_theme = APP_UI_THEME_DARK;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -521,6 +962,14 @@ static bool app_settings_is_valid(const app_settings_t *cfg)
         return false;
     }
 
+    if (cfg->ui_theme > APP_UI_THEME_LIGHT) {
+        return false;
+    }
+
+    if (!screen_rotation_is_valid(cfg->screen_rotation)) {
+        return false;
+    }
+
     /*
      * 先确保 NVS 中读出的字符串都有 '\0' 结尾。
      */
@@ -537,6 +986,26 @@ static bool app_settings_is_valid(const app_settings_t *cfg)
     if (!is_c_string_terminated(cfg->fmo_host,
                                 sizeof(cfg->fmo_host))) {
         return false;
+    }
+
+    if (cfg->active_profile_index >= APP_CONNECTION_PROFILE_MAX) {
+        return false;
+    }
+
+    for (uint8_t i = 0; i < APP_CONNECTION_PROFILE_MAX; i++) {
+        const app_connection_profile_t *profile =
+            &cfg->connection_profiles[i];
+
+        if (!is_c_string_terminated(profile->name,
+                                    sizeof(profile->name)) ||
+            !is_c_string_terminated(profile->wifi_ssid,
+                                    sizeof(profile->wifi_ssid)) ||
+            !is_c_string_terminated(profile->wifi_password,
+                                    sizeof(profile->wifi_password)) ||
+            !is_c_string_terminated(profile->fmo_host,
+                                    sizeof(profile->fmo_host))) {
+            return false;
+        }
     }
 
     if (!is_c_string_terminated(cfg->ws_audio_url,
@@ -581,7 +1050,7 @@ static bool app_settings_is_valid(const app_settings_t *cfg)
         return false;
     }
 
-    if (!is_non_empty_string(cfg->fmo_host)) {
+    if (!fmo_host_is_valid(cfg->fmo_host)) {
         return false;
     }
 
@@ -633,6 +1102,21 @@ static void app_settings_sanitize(app_settings_t *cfg)
 
     cfg->idle_image_enabled = cfg->idle_image_enabled ? 1 : 0;
 
+    if (cfg->ui_theme > APP_UI_THEME_LIGHT) {
+        cfg->ui_theme = APP_UI_THEME_DARK;
+    }
+
+    if (!screen_rotation_is_valid(cfg->screen_rotation)) {
+        cfg->screen_rotation =
+            cfg->screen_rotate_180 ? APP_SCREEN_ROTATION_180 : APP_SCREEN_ROTATION_0;
+    }
+
+    if (cfg->screen_rotation != APP_SCREEN_ROTATION_180) {
+        cfg->screen_rotation = APP_SCREEN_ROTATION_0;
+    }
+
+    cfg->screen_rotate_180 = (cfg->screen_rotation == APP_SCREEN_ROTATION_180);
+
     /*
      * 先保证字符串有结尾，避免 strlen 越界。
      */
@@ -640,6 +1124,37 @@ static void app_settings_sanitize(app_settings_t *cfg)
     cfg->wifi_password[sizeof(cfg->wifi_password) - 1] = '\0';
     cfg->fmo_host[sizeof(cfg->fmo_host) - 1] = '\0';
     cfg->owner_callsign[sizeof(cfg->owner_callsign) - 1] = '\0';
+
+    if (cfg->active_profile_index >= APP_CONNECTION_PROFILE_MAX) {
+        cfg->active_profile_index = 0;
+    }
+
+    for (uint8_t i = 0; i < APP_CONNECTION_PROFILE_MAX; i++) {
+        app_connection_profile_t *profile = &cfg->connection_profiles[i];
+
+        profile->name[sizeof(profile->name) - 1] = '\0';
+        profile->wifi_ssid[sizeof(profile->wifi_ssid) - 1] = '\0';
+        profile->wifi_password[sizeof(profile->wifi_password) - 1] = '\0';
+        profile->fmo_host[sizeof(profile->fmo_host) - 1] = '\0';
+        profile->ddns_remote_enabled = profile->ddns_remote_enabled ? true : false;
+
+        app_settings_profile_set_default_name(cfg, i);
+
+        if (profile->wifi_ssid[0] != '\0' &&
+            !wifi_ssid_is_valid(profile->wifi_ssid)) {
+            profile->wifi_ssid[0] = '\0';
+            profile->wifi_password[0] = '\0';
+        }
+
+        if (!wifi_password_is_valid(profile->wifi_password)) {
+            profile->wifi_password[0] = '\0';
+        }
+
+        if (profile->fmo_host[0] != '\0' &&
+            !fmo_host_is_valid(profile->fmo_host)) {
+            profile->fmo_host[0] = '\0';
+        }
+    }
 
     /*
      * 本机呼号非法则恢复默认。
@@ -691,8 +1206,19 @@ static void app_settings_sanitize(app_settings_t *cfg)
         }
     }
 
-    if (!is_non_empty_string(cfg->fmo_host)) {
+    if (cfg->connection_profiles[0].fmo_host[0] == '\0') {
+        app_settings_sync_legacy_to_profile(cfg, 0);
+    }
+
+    app_settings_sync_active_profile_to_legacy(cfg);
+
+    if (!fmo_host_is_valid(cfg->fmo_host)) {
         safe_strcpy(cfg->fmo_host, sizeof(cfg->fmo_host), DEFAULT_FMO_HOST);
+        safe_strcpy(
+            cfg->connection_profiles[cfg->active_profile_index].fmo_host,
+            sizeof(cfg->connection_profiles[cfg->active_profile_index].fmo_host),
+            cfg->fmo_host
+        );
     }
 
     /*
@@ -736,11 +1262,133 @@ static void app_settings_sanitize(app_settings_t *cfg)
 /* Save / load / init                                                         */
 /* -------------------------------------------------------------------------- */
 
-esp_err_t app_settings_set_screen_rotate_180(bool enabled)
+static bool screen_rotation_is_valid(uint16_t rotation)
 {
+    return rotation == APP_SCREEN_ROTATION_0 ||
+           rotation == APP_SCREEN_ROTATION_90 ||
+           rotation == APP_SCREEN_ROTATION_180 ||
+           rotation == APP_SCREEN_ROTATION_270;
+}
+
+esp_err_t app_settings_set_screen_rotation(uint16_t rotation)
+{
+    if (rotation != APP_SCREEN_ROTATION_0 &&
+        rotation != APP_SCREEN_ROTATION_180) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
     app_settings_t tmp = s_settings;
 
-    tmp.screen_rotate_180 = enabled;
+    tmp.screen_rotation = rotation;
+    tmp.screen_rotate_180 = (rotation == APP_SCREEN_ROTATION_180);
+
+    return app_settings_save(&tmp);
+}
+
+esp_err_t app_settings_set_ui_theme(uint8_t theme)
+{
+    if (theme > APP_UI_THEME_LIGHT) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    app_settings_t tmp = s_settings;
+
+    tmp.ui_theme = theme;
+
+    return app_settings_save(&tmp);
+}
+
+const app_connection_profile_t *app_settings_get_active_profile(void)
+{
+    if (s_settings.active_profile_index >= APP_CONNECTION_PROFILE_MAX) {
+        return &s_settings.connection_profiles[0];
+    }
+
+    return &s_settings.connection_profiles[s_settings.active_profile_index];
+}
+
+esp_err_t app_settings_set_active_profile(uint8_t index)
+{
+    if (index >= APP_CONNECTION_PROFILE_MAX) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    app_settings_t tmp = s_settings;
+    app_connection_profile_t *profile = &tmp.connection_profiles[index];
+
+    if (!wifi_ssid_is_valid(profile->wifi_ssid) ||
+        !fmo_host_is_valid(profile->fmo_host)) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    tmp.active_profile_index = index;
+    app_settings_sync_active_profile_to_legacy(&tmp);
+
+    return app_settings_save(&tmp);
+}
+
+esp_err_t app_settings_set_profile_wifi(uint8_t index,
+                                        const char *ssid,
+                                        const char *password)
+{
+    if (index >= APP_CONNECTION_PROFILE_MAX || !ssid || ssid[0] == '\0') {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    app_settings_t tmp = s_settings;
+    app_connection_profile_t *profile = &tmp.connection_profiles[index];
+    app_settings_profile_set_default_name(&tmp, index);
+
+    esp_err_t err = copy_wifi_ssid(profile->wifi_ssid,
+                                   sizeof(profile->wifi_ssid),
+                                   ssid);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = copy_wifi_password(profile->wifi_password,
+                             sizeof(profile->wifi_password),
+                             password ? password : "");
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    if (index == tmp.active_profile_index) {
+        app_settings_sync_active_profile_to_legacy(&tmp);
+    }
+
+    return app_settings_save(&tmp);
+}
+
+esp_err_t app_settings_set_profile_fmo_host(uint8_t index, const char *host)
+{
+    if (index >= APP_CONNECTION_PROFILE_MAX || !fmo_host_is_valid(host)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    app_settings_t tmp = s_settings;
+    app_connection_profile_t *profile = &tmp.connection_profiles[index];
+    app_settings_profile_set_default_name(&tmp, index);
+
+    safe_strcpy(profile->fmo_host, sizeof(profile->fmo_host), host);
+
+    if (index == tmp.active_profile_index) {
+        app_settings_sync_active_profile_to_legacy(&tmp);
+        app_settings_build_ws_urls(&tmp);
+    }
+
+    return app_settings_save(&tmp);
+}
+
+esp_err_t app_settings_set_profile_ddns_remote(uint8_t index, bool enabled)
+{
+    if (index >= APP_CONNECTION_PROFILE_MAX) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    app_settings_t tmp = s_settings;
+    app_settings_profile_set_default_name(&tmp, index);
+    tmp.connection_profiles[index].ddns_remote_enabled = enabled;
 
     return app_settings_save(&tmp);
 }
@@ -751,9 +1399,15 @@ esp_err_t app_settings_save(const app_settings_t *cfg)
         return ESP_ERR_INVALID_ARG;
     }
 
-    app_settings_t tmp = *cfg;
+    app_settings_t *tmp = (app_settings_t *)malloc(sizeof(app_settings_t));
+    if (!tmp) {
+        ESP_LOGE(TAG, "settings save no memory");
+        return ESP_ERR_NO_MEM;
+    }
 
-    app_settings_sanitize(&tmp);
+    *tmp = *cfg;
+
+    app_settings_sanitize(tmp);
 
     /*
      * 保存前再次校验 WiFi SSID。
@@ -761,22 +1415,25 @@ esp_err_t app_settings_save(const app_settings_t *cfg)
      * 当前保持原逻辑：WiFi SSID 不能为空。
      * 如果后续希望支持“未配置 WiFi”状态，可在这里放宽限制。
      */
-    if (!wifi_ssid_is_valid(tmp.wifi_ssid)) {
+    if (!wifi_ssid_is_valid(tmp->wifi_ssid)) {
         ESP_LOGE(TAG,
                  "invalid wifi_ssid, len=%u",
-                 (unsigned)strlen(tmp.wifi_ssid));
+                 (unsigned)strlen(tmp->wifi_ssid));
+        free(tmp);
         return ESP_ERR_INVALID_ARG;
     }
 
-    if (!wifi_password_is_valid(tmp.wifi_password)) {
+    if (!wifi_password_is_valid(tmp->wifi_password)) {
         ESP_LOGE(TAG,
                  "invalid wifi_password, len=%u",
-                 (unsigned)strlen(tmp.wifi_password));
+                 (unsigned)strlen(tmp->wifi_password));
+        free(tmp);
         return ESP_ERR_INVALID_ARG;
     }
 
-    if (!owner_callsign_is_valid(tmp.owner_callsign)) {
-        ESP_LOGE(TAG, "invalid owner_callsign=%s", tmp.owner_callsign);
+    if (!owner_callsign_is_valid(tmp->owner_callsign)) {
+        ESP_LOGE(TAG, "invalid owner_callsign=%s", tmp->owner_callsign);
+        free(tmp);
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -785,10 +1442,11 @@ esp_err_t app_settings_save(const app_settings_t *cfg)
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "nvs_open failed: %s", esp_err_to_name(err));
+        free(tmp);
         return err;
     }
 
-    err = nvs_set_blob(handle, NVS_KEY_BLOB, &tmp, sizeof(tmp));
+    err = nvs_set_blob(handle, NVS_KEY_BLOB, tmp, sizeof(*tmp));
     if (err == ESP_OK) {
         err = nvs_commit(handle);
     }
@@ -796,7 +1454,7 @@ esp_err_t app_settings_save(const app_settings_t *cfg)
     nvs_close(handle);
 
     if (err == ESP_OK) {
-        s_settings = tmp;
+        s_settings = *tmp;
 
         ESP_LOGI(TAG, "settings saved");
         ESP_LOGI(TAG, "owner_callsign=%s", s_settings.owner_callsign);
@@ -820,6 +1478,8 @@ esp_err_t app_settings_save(const app_settings_t *cfg)
     } else {
         ESP_LOGE(TAG, "settings save failed: %s", esp_err_to_name(err));
     }
+
+    free(tmp);
 
     return err;
 }
@@ -857,17 +1517,18 @@ esp_err_t app_settings_init(void)
         return err;
     }
 
-    app_settings_t loaded;
+    static app_settings_t loaded;
     memset(&loaded, 0, sizeof(loaded));
 
     size_t required_size = sizeof(loaded);
 
     err = nvs_get_blob(handle, NVS_KEY_BLOB, &loaded, &required_size);
-    nvs_close(handle);
 
     if (err == ESP_OK &&
         required_size == sizeof(loaded) &&
         app_settings_is_valid(&loaded)) {
+
+        nvs_close(handle);
 
         /*
          * 即使 NVS 中已有 URL，也重新按 fmo_host 生成一次，
@@ -918,6 +1579,63 @@ esp_err_t app_settings_init(void)
                  s_settings.battery_offset_mv);
 
         return ESP_OK;
+    }
+
+    static app_settings_legacy_v12_t legacy_v12;
+    memset(&legacy_v12, 0, sizeof(legacy_v12));
+    required_size = sizeof(legacy_v12);
+    esp_err_t legacy_v12_err =
+        nvs_get_blob(handle, NVS_KEY_BLOB, &legacy_v12, &required_size);
+
+    if (legacy_v12_err == ESP_OK &&
+        required_size == sizeof(legacy_v12) &&
+        app_settings_migrate_legacy_v12(&loaded, &legacy_v12)) {
+        nvs_close(handle);
+        ESP_LOGI(TAG, "settings migrated from v12 to v13");
+        return app_settings_save(&loaded);
+    }
+
+    static app_settings_legacy_v11_t legacy_v11;
+    memset(&legacy_v11, 0, sizeof(legacy_v11));
+    required_size = sizeof(legacy_v11);
+    esp_err_t legacy_v11_err =
+        nvs_get_blob(handle, NVS_KEY_BLOB, &legacy_v11, &required_size);
+
+    if (legacy_v11_err == ESP_OK &&
+        required_size == sizeof(legacy_v11) &&
+        app_settings_migrate_legacy_v11(&loaded, &legacy_v11)) {
+        nvs_close(handle);
+        ESP_LOGI(TAG, "settings migrated from v11 to v12");
+        return app_settings_save(&loaded);
+    }
+
+    static app_settings_legacy_v10_t legacy_v10;
+    memset(&legacy_v10, 0, sizeof(legacy_v10));
+    required_size = sizeof(legacy_v10);
+    esp_err_t legacy_v10_err =
+        nvs_get_blob(handle, NVS_KEY_BLOB, &legacy_v10, &required_size);
+
+    if (legacy_v10_err == ESP_OK &&
+        required_size == sizeof(legacy_v10) &&
+        app_settings_migrate_legacy_v10(&loaded, &legacy_v10)) {
+        nvs_close(handle);
+        ESP_LOGI(TAG, "settings migrated from v10 to v12");
+        return app_settings_save(&loaded);
+    }
+
+    static app_settings_legacy_v9_t legacy_v9;
+    memset(&legacy_v9, 0, sizeof(legacy_v9));
+    required_size = sizeof(legacy_v9);
+    esp_err_t legacy_err =
+        nvs_get_blob(handle, NVS_KEY_BLOB, &legacy_v9, &required_size);
+
+    nvs_close(handle);
+
+    if (legacy_err == ESP_OK &&
+        required_size == sizeof(legacy_v9) &&
+        app_settings_migrate_legacy_v9(&loaded, &legacy_v9)) {
+        ESP_LOGI(TAG, "settings migrated from v9 to v12");
+        return app_settings_save(&loaded);
     }
 
     if (err == ESP_ERR_NVS_NOT_FOUND) {
@@ -983,6 +1701,8 @@ esp_err_t app_settings_set_wifi(const char *ssid, const char *password)
         return err;
     }
 
+    app_settings_sync_legacy_to_profile(&tmp, tmp.active_profile_index);
+
     ESP_LOGI(TAG,
              "set wifi ssid=%s, len=%u bytes",
              tmp.wifi_ssid,
@@ -999,15 +1719,12 @@ esp_err_t app_settings_set_fmo_host(const char *host)
 
     app_settings_t tmp = s_settings;
 
-    /*
-     * 当前保持原逻辑：超长 host 会被 safe_strcpy 截断。
-     *
-     * 如果后续需要更严格的行为，可改为：
-     * if (strlen(host) >= sizeof(tmp.fmo_host)) {
-     *     return ESP_ERR_INVALID_SIZE;
-     * }
-     */
+    if (!fmo_host_is_valid(host)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
     safe_strcpy(tmp.fmo_host, sizeof(tmp.fmo_host), host);
+    app_settings_sync_legacy_to_profile(&tmp, tmp.active_profile_index);
 
     app_settings_build_ws_urls(&tmp);
 

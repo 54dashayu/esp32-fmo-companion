@@ -54,6 +54,7 @@
 #include "app_settings.h"
 #include "audio_ws.h"
 #include "board_config.h"
+#include "lv_port_indev.h"
 #include "station_parser.h"
 #include "ui_icons.h"
 #include "wifi_manager.h"
@@ -63,6 +64,64 @@
 /* -------------------------------------------------------------------------- */
 
 static const char *TAG = "app_ui";
+
+static uint8_t s_applied_ui_theme = APP_UI_THEME_DARK;
+static bool s_applied_ui_theme_valid = false;
+
+static bool ui_theme_is_light(void)
+{
+    const app_settings_t *cfg = app_settings_get();
+    uint8_t theme = s_applied_ui_theme_valid ?
+        s_applied_ui_theme :
+        (cfg ? cfg->ui_theme : APP_UI_THEME_DARK);
+
+    return theme == APP_UI_THEME_LIGHT;
+}
+
+static lv_color_t ui_color_bg(void)
+{
+    return ui_theme_is_light() ? lv_color_hex(0xF5F6F8) : lv_color_hex(0x000000);
+}
+
+static lv_color_t ui_color_panel(void)
+{
+    return ui_theme_is_light() ? lv_color_hex(0xE7EBF0) : lv_color_hex(0x101010);
+}
+
+static lv_color_t ui_color_orange(void)
+{
+    return ui_theme_is_light() ? lv_color_hex(0xD56A00) : lv_color_hex(0xFF8800);
+}
+
+static lv_color_t ui_color_orange_dark(void)
+{
+    return ui_theme_is_light() ? lv_color_hex(0xF0C38F) : lv_color_hex(0x9A5200);
+}
+
+static lv_color_t ui_color_white(void)
+{
+    return ui_theme_is_light() ? lv_color_hex(0x101418) : lv_color_hex(0xFFFFFF);
+}
+
+static lv_color_t ui_color_gray(void)
+{
+    return ui_theme_is_light() ? lv_color_hex(0x59616C) : lv_color_hex(0xE7EAEE);
+}
+
+static lv_color_t ui_color_dark_gray(void)
+{
+    return ui_theme_is_light() ? lv_color_hex(0xC8CDD4) : lv_color_hex(0x202020);
+}
+
+static lv_color_t ui_color_green(void)
+{
+    return ui_theme_is_light() ? lv_color_hex(0x168A34) : lv_color_hex(0x32D74B);
+}
+
+static lv_color_t ui_color_red(void)
+{
+    return ui_theme_is_light() ? lv_color_hex(0xC9281F) : lv_color_hex(0xFF453A);
+}
 
 /* -------------------------------------------------------------------------- */
 /* Font declarations                                                          */
@@ -87,15 +146,27 @@ LV_FONT_DECLARE(clock_font);
 /* Private macros: colors                                                     */
 /* -------------------------------------------------------------------------- */
 
-#define UI_COLOR_BG              lv_color_hex(0x000000)
-#define UI_COLOR_PANEL           lv_color_hex(0x101010)
-#define UI_COLOR_ORANGE          lv_color_hex(0xFF8800)
-#define UI_COLOR_ORANGE_DARK     lv_color_hex(0x9A5200)
-#define UI_COLOR_WHITE           lv_color_hex(0xFFFFFF)
-#define UI_COLOR_GRAY            lv_color_hex(0xE7EAEE)
-#define UI_COLOR_DARK_GRAY       lv_color_hex(0x202020)
-#define UI_COLOR_GREEN           lv_color_hex(0x32D74B)
-#define UI_COLOR_RED             lv_color_hex(0xFF453A)
+static bool ui_theme_is_light(void);
+static lv_color_t ui_color_bg(void);
+static lv_color_t ui_color_panel(void);
+static lv_color_t ui_color_orange(void);
+static lv_color_t ui_color_orange_dark(void);
+static lv_color_t ui_color_white(void);
+static lv_color_t ui_color_gray(void);
+static lv_color_t ui_color_dark_gray(void);
+static lv_color_t ui_color_green(void);
+static lv_color_t ui_color_red(void);
+
+#define UI_COLOR_BG              ui_color_bg()
+#define UI_COLOR_PANEL           ui_color_panel()
+#define UI_COLOR_ORANGE          ui_color_orange()
+#define UI_COLOR_ORANGE_DARK     ui_color_orange_dark()
+#define UI_COLOR_WHITE           ui_color_white()
+#define UI_COLOR_GRAY            ui_color_gray()
+#define UI_COLOR_DARK_GRAY       ui_color_dark_gray()
+#define UI_COLOR_GREEN           ui_color_green()
+#define UI_COLOR_RED             ui_color_red()
+#define UI_COLOR_ON_ACCENT       lv_color_hex(0x000000)
 
 /* -------------------------------------------------------------------------- */
 /* Private macros: backlight PWM                                              */
@@ -144,6 +215,9 @@ LV_FONT_DECLARE(clock_font);
 /* -------------------------------------------------------------------------- */
 
 static lv_obj_t *s_root = NULL;
+static lv_obj_t *s_main_screen = NULL;
+static lv_obj_t *s_power_save_dim_overlay = NULL;
+static bool s_power_save_visual_active = false;
 
 /*
  * 当前用户或系统要求的正常背光值。
@@ -244,6 +318,8 @@ static lv_obj_t *s_label_status = NULL;
 
 /* 设置页首页与子页面 */
 static lv_obj_t *s_settings_home = NULL;
+static lv_obj_t *s_settings_profile_page = NULL;
+static lv_obj_t *s_settings_profile_detail_page = NULL;
 static lv_obj_t *s_settings_fmo_page = NULL;
 static lv_obj_t *s_settings_callsign_page = NULL;
 static lv_obj_t *s_settings_volume_page = NULL;
@@ -252,20 +328,43 @@ static lv_obj_t *s_settings_wifi_page = NULL;
 static lv_obj_t *s_settings_wifi_scan_page = NULL;
 static lv_obj_t *s_settings_battery_page = NULL;
 static lv_obj_t *s_settings_station_page = NULL;
+static lv_obj_t *s_btn_wifi_scan = NULL;
 
 /* 设置首页当前值显示 */
+static lv_obj_t *s_label_setting_profile_value = NULL;
+static lv_obj_t *s_label_setting_network_value = NULL;
 static lv_obj_t *s_label_setting_fmo_value = NULL;
 static lv_obj_t *s_label_setting_callsign_value = NULL;
 static lv_obj_t *s_label_setting_volume_value = NULL;
 static lv_obj_t *s_label_setting_backlight_value = NULL;
 static lv_obj_t *s_label_setting_rotate_value = NULL;
+static lv_obj_t *s_label_setting_theme_value = NULL;
 static lv_obj_t *s_label_setting_wifi_value = NULL;
 static lv_obj_t *s_label_setting_battery_value = NULL;
 static lv_obj_t *s_label_setting_station_value = NULL;
 static lv_obj_t *s_label_setting_power_save_value = NULL;
 static lv_obj_t *s_label_setting_qso_value = NULL;
 
+static lv_obj_t *s_profile_item_btns[APP_CONNECTION_PROFILE_MAX];
+static lv_obj_t *s_profile_item_labels[APP_CONNECTION_PROFILE_MAX];
+static lv_obj_t *s_profile_back_btn = NULL;
+static lv_obj_t *s_profile_back_label = NULL;
+static uint8_t s_profile_list_selected = 0;
+static uint8_t s_profile_detail_index = 0;
+static uint8_t s_settings_edit_profile_index = 0;
+static uint8_t s_settings_profile_select_saved_index = 0;
+static bool s_settings_profile_select_editing = false;
+static lv_obj_t *s_label_profile_detail_title = NULL;
+static lv_obj_t *s_label_profile_detail_wifi = NULL;
+static lv_obj_t *s_label_profile_detail_password = NULL;
+static lv_obj_t *s_label_profile_detail_fmo = NULL;
+static lv_obj_t *s_label_profile_detail_ddns = NULL;
+static lv_obj_t *s_label_profile_detail_sync = NULL;
+static lv_obj_t *s_label_profile_detail_save = NULL;
+static lv_obj_t *s_label_profile_detail_enable = NULL;
+
 /* FMO 地址输入 */
+static lv_obj_t *s_label_fmo_page_title = NULL;
 static lv_obj_t *s_ta_fmo_host = NULL;
 
 /* 本机呼号输入 */
@@ -282,6 +381,7 @@ static lv_obj_t *s_label_backlight_value = NULL;
 static bool s_settings_slider_editing = false;
 
 /* WiFi 设置 */
+static lv_obj_t *s_label_wifi_page_title = NULL;
 static lv_obj_t *s_ta_wifi_ssid = NULL;
 static lv_obj_t *s_ta_wifi_password = NULL;
 
@@ -393,6 +493,7 @@ static void label_set_color(lv_obj_t *label, lv_color_t color);
 static void img_set_color(lv_obj_t *img, lv_color_t color);
 static void label_set_font(lv_obj_t *label, const lv_font_t *font);
 static void make_clean_obj(lv_obj_t *obj, lv_color_t bg_color, lv_opa_t opa);
+static void app_ui_disable_auto_scroll(lv_obj_t *obj);
 static void set_label_text_safe(lv_obj_t *label,
                                 const char *text,
                                 const char *fallback);
@@ -416,7 +517,9 @@ static int settings_text_to_int(const char *s, int def_val);
 
 static esp_err_t app_ui_backlight_pwm_init_once(void);
 static void app_ui_backlight_apply_raw(uint8_t percent);
-static void app_ui_apply_screen_rotation(bool rotate_180);
+static void app_ui_apply_screen_rotation_degrees(uint16_t rotation);
+static const char *settings_rotation_text(uint16_t rotation);
+static const char *settings_applied_theme_text(void);
 
 /* -------------------------------------------------------------------------- */
 /* Private function declarations: date and time                               */
@@ -463,6 +566,12 @@ static lv_obj_t *settings_create_row(lv_obj_t *parent,
                                      const char *name,
                                      const char *value,
                                      lv_event_cb_t cb);
+static lv_obj_t *settings_create_profile_detail_row(lv_obj_t *parent,
+                                                    const char *name,
+                                                    const char *value,
+                                                    int y,
+                                                    lv_event_cb_t cb,
+                                                    void *user_data);
 
 static lv_obj_t *settings_create_action_button(lv_obj_t *parent,
                                                const char *text,
@@ -481,6 +590,22 @@ static void settings_ta_number_focus_event_cb(lv_event_t *e);
 
 static void settings_fmo_open_event_cb(lv_event_t *e);
 static void settings_fmo_save_event_cb(lv_event_t *e);
+static void settings_profile_open_event_cb(lv_event_t *e);
+static void settings_profile_select_event_cb(lv_event_t *e);
+static void settings_profile_network_event_cb(lv_event_t *e);
+static bool settings_profile_list_is_visible(void);
+static void settings_profile_list_move(int delta);
+static void settings_profile_list_activate(void);
+static void settings_profile_page_rebuild(void);
+static void settings_profile_render(void);
+static void settings_profile_detail_show(uint8_t index);
+static void settings_profile_detail_render(void);
+static void settings_profile_detail_status_event_cb(lv_event_t *e);
+static void settings_profile_detail_wifi_event_cb(lv_event_t *e);
+static void settings_profile_detail_fmo_event_cb(lv_event_t *e);
+static void settings_profile_detail_ddns_event_cb(lv_event_t *e);
+static void settings_profile_detail_save_event_cb(lv_event_t *e);
+static void settings_profile_detail_enable_event_cb(lv_event_t *e);
 
 static void settings_callsign_open_event_cb(lv_event_t *e);
 static void settings_callsign_save_event_cb(lv_event_t *e);
@@ -498,6 +623,7 @@ static void settings_slider_edit_set(lv_obj_t *slider, bool editing);
 static void settings_slider_adjust(lv_obj_t *slider, int delta);
 
 static void settings_rotate_toggle_event_cb(lv_event_t *e);
+static void settings_theme_toggle_event_cb(lv_event_t *e);
 
 static void settings_power_save_toggle_event_cb(lv_event_t *e);
 static void settings_qso_sync_event_cb(lv_event_t *e);
@@ -536,6 +662,7 @@ static void settings_wifi_scan_render(void);
 
 static void create_main_station_popup(lv_obj_t *parent);
 static void create_qso_sync_popup(lv_obj_t *parent);
+static void create_power_save_dim_overlay(lv_obj_t *parent);
 static void qso_sync_popup_auto_close_cb(lv_timer_t *timer);
 
 static void main_station_popup_open_event_cb(lv_event_t *e);
@@ -554,6 +681,8 @@ static void main_station_popup_render(void);
 
 static void create_settings_page(lv_obj_t *parent);
 static void create_settings_home(lv_obj_t *parent);
+static void create_settings_profile_page(lv_obj_t *parent);
+static void create_settings_profile_detail_page(lv_obj_t *parent);
 static void create_settings_fmo_page(lv_obj_t *parent);
 static void create_settings_callsign_page(lv_obj_t *parent);
 static void create_settings_volume_page(lv_obj_t *parent);
@@ -656,19 +785,35 @@ static void make_clean_obj(lv_obj_t *obj, lv_color_t bg_color, lv_opa_t opa)
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
 }
 
+static void app_ui_disable_auto_scroll(lv_obj_t *obj)
+{
+    if (!obj) {
+        return;
+    }
+
+    lv_obj_clear_flag(obj,
+                      LV_OBJ_FLAG_SCROLL_ON_FOCUS |
+                      LV_OBJ_FLAG_SCROLL_CHAIN |
+                      LV_OBJ_FLAG_SCROLL_ELASTIC |
+                      LV_OBJ_FLAG_SCROLL_MOMENTUM |
+                      LV_OBJ_FLAG_SNAPPABLE);
+    lv_obj_set_scroll_dir(obj, LV_DIR_NONE);
+    lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_OFF);
+}
+
 static void app_ui_focus_style_apply(lv_obj_t *obj)
 {
     if (!obj) {
         return;
     }
 
-    lv_obj_set_style_outline_width(obj, 3, LV_PART_MAIN | LV_STATE_FOCUSED);
+    lv_obj_set_style_outline_width(obj, 5, LV_PART_MAIN | LV_STATE_FOCUSED);
     lv_obj_set_style_outline_color(obj, UI_COLOR_WHITE,
                                    LV_PART_MAIN | LV_STATE_FOCUSED);
     lv_obj_set_style_outline_opa(obj, LV_OPA_COVER,
                                  LV_PART_MAIN | LV_STATE_FOCUSED);
-    lv_obj_set_style_outline_pad(obj, 2, LV_PART_MAIN | LV_STATE_FOCUSED);
-    lv_obj_set_style_shadow_width(obj, 10, LV_PART_MAIN | LV_STATE_FOCUSED);
+    lv_obj_set_style_outline_pad(obj, 1, LV_PART_MAIN | LV_STATE_FOCUSED);
+    lv_obj_set_style_shadow_width(obj, 14, LV_PART_MAIN | LV_STATE_FOCUSED);
     lv_obj_set_style_shadow_color(obj, UI_COLOR_ORANGE,
                                   LV_PART_MAIN | LV_STATE_FOCUSED);
     lv_obj_set_style_shadow_opa(obj, LV_OPA_70,
@@ -759,6 +904,7 @@ static void app_ui_focus_collect(lv_group_t *group, lv_obj_t *obj)
 
     if (lv_obj_has_flag(obj, LV_OBJ_FLAG_CLICKABLE) &&
         !lv_obj_has_state(obj, LV_STATE_DISABLED)) {
+        app_ui_disable_auto_scroll(obj);
         app_ui_focus_style_apply(obj);
         lv_group_add_obj(group, obj);
 
@@ -805,6 +951,14 @@ static void app_ui_focus_rebuild_active(void)
     if (s_main_station_popup &&
         !lv_obj_has_flag(s_main_station_popup, LV_OBJ_FLAG_HIDDEN)) {
         app_ui_focus_rebuild(s_main_station_popup);
+        return;
+    }
+
+    if (settings_profile_list_is_visible()) {
+        lv_group_t *group = lv_group_get_default();
+        if (group) {
+            lv_group_remove_all_objs(group);
+        }
         return;
     }
 
@@ -857,11 +1011,119 @@ static int settings_text_to_int(const char *s, int def_val)
     return atoi(s);
 }
 
+static void settings_format_active_profile(char *buf, size_t buf_size)
+{
+    if (!buf || buf_size == 0) {
+        return;
+    }
+
+    const app_settings_t *cfg = app_settings_get();
+    uint8_t index = cfg ? cfg->active_profile_index : 0;
+    if (index >= APP_CONNECTION_PROFILE_MAX) {
+        index = 0;
+    }
+
+    const app_connection_profile_t *profile =
+        cfg ? &cfg->connection_profiles[index] : NULL;
+    const char *name = (profile && profile->name[0]) ? profile->name : "配置";
+
+    snprintf(buf,
+             buf_size,
+             "%u/%u %s",
+             (unsigned)(index + 1),
+             (unsigned)APP_CONNECTION_PROFILE_MAX,
+             name);
+}
+
+static void settings_format_selected_profile(char *buf, size_t buf_size)
+{
+    if (!buf || buf_size == 0) {
+        return;
+    }
+
+    const app_settings_t *cfg = app_settings_get();
+    uint8_t index = s_settings_edit_profile_index;
+
+    if (s_settings_profile_select_editing &&
+        index == APP_CONNECTION_PROFILE_MAX) {
+        snprintf(buf, buf_size, "< 返回 >");
+        return;
+    }
+
+    if (index >= APP_CONNECTION_PROFILE_MAX) {
+        index = cfg ? cfg->active_profile_index : 0;
+    }
+
+    if (index >= APP_CONNECTION_PROFILE_MAX) {
+        index = 0;
+    }
+
+    const app_connection_profile_t *profile =
+        cfg ? &cfg->connection_profiles[index] : NULL;
+    const char *name = (profile && profile->name[0]) ? profile->name : "配置";
+
+    snprintf(buf,
+             buf_size,
+             "%s%u/%u %s%s",
+             s_settings_profile_select_editing ? "< " : "",
+             (unsigned)(index + 1),
+             (unsigned)APP_CONNECTION_PROFILE_MAX,
+             name,
+             s_settings_profile_select_editing ? " >" : "");
+}
+
+static const char *settings_selected_profile_status_text(void)
+{
+    const app_settings_t *cfg = app_settings_get();
+    uint8_t index = s_settings_edit_profile_index;
+
+    if (index == APP_CONNECTION_PROFILE_MAX) {
+        index = s_settings_profile_select_saved_index;
+    }
+
+    if (index >= APP_CONNECTION_PROFILE_MAX) {
+        index = cfg ? cfg->active_profile_index : 0;
+    }
+
+    if (!cfg || index >= APP_CONNECTION_PROFILE_MAX) {
+        return "未设置";
+    }
+
+    const app_connection_profile_t *profile = &cfg->connection_profiles[index];
+    return (profile->wifi_ssid[0] && profile->fmo_host[0]) ?
+        "已配置" : "未设置";
+}
+
 /* -------------------------------------------------------------------------- */
 /* Screen rotation and backlight                                               */
 /* -------------------------------------------------------------------------- */
 
-static void app_ui_apply_screen_rotation(bool rotate_180)
+static lv_disp_rot_t app_ui_rotation_to_lvgl(uint16_t rotation)
+{
+    switch (rotation) {
+    case APP_SCREEN_ROTATION_180:
+        return LV_DISP_ROT_180;
+    default:
+        return LV_DISP_ROT_NONE;
+    }
+}
+
+static const char *settings_rotation_text(uint16_t rotation)
+{
+    switch (rotation) {
+    case APP_SCREEN_ROTATION_180:
+        return "180°";
+    default:
+        return "正常";
+    }
+}
+
+static const char *settings_applied_theme_text(void)
+{
+    return ui_theme_is_light() ? "浅色" : "深色";
+}
+
+static void app_ui_apply_screen_rotation_degrees(uint16_t rotation)
 {
 #if LVGL_VERSION_MAJOR >= 8
     lv_disp_t *disp = lv_disp_get_default();
@@ -869,11 +1131,7 @@ static void app_ui_apply_screen_rotation(bool rotate_180)
         return;
     }
 
-    if (rotate_180) {
-        lv_disp_set_rotation(disp, LV_DISP_ROT_180);
-    } else {
-        lv_disp_set_rotation(disp, LV_DISP_ROT_NONE);
-    }
+    lv_disp_set_rotation(disp, app_ui_rotation_to_lvgl(rotation));
 
     lv_obj_invalidate(lv_scr_act());
 #else
@@ -881,7 +1139,7 @@ static void app_ui_apply_screen_rotation(bool rotate_180)
      * LVGL 7 或更老版本不支持 lv_disp_set_rotation()。
      * 如果使用旧版 LVGL，需要在显示驱动层实现旋转。
      */
-    (void)rotate_180;
+    (void)rotation;
 #endif
 }
 
@@ -1611,18 +1869,26 @@ static void settings_refresh_home_values(void)
         return;
     }
 
-    if (s_label_setting_fmo_value) {
-        lv_label_set_text(s_label_setting_fmo_value, cfg->fmo_host);
+    if (s_label_setting_profile_value) {
+        char buf[32];
+        settings_format_selected_profile(buf, sizeof(buf));
+        lv_label_set_text(s_label_setting_profile_value, buf);
+    }
+
+    if (s_label_setting_network_value) {
+        lv_label_set_text(s_label_setting_network_value,
+                          settings_selected_profile_status_text());
     }
 
     if (s_label_setting_callsign_value) {
-        if (cfg->owner_callsign[0]) {
-            lv_label_set_text(s_label_setting_callsign_value,
-                              cfg->owner_callsign);
-        } else {
-            lv_label_set_text(s_label_setting_callsign_value,
-                              APP_DEFAULT_OWNER_CALLSIGN);
-        }
+        lv_label_set_text(
+            s_label_setting_callsign_value,
+            cfg->owner_callsign[0] ? cfg->owner_callsign : APP_DEFAULT_OWNER_CALLSIGN
+        );
+    }
+
+    if (s_label_setting_fmo_value) {
+        lv_label_set_text(s_label_setting_fmo_value, cfg->fmo_host);
     }
 
     if (s_label_setting_volume_value) {
@@ -1657,10 +1923,6 @@ static void settings_refresh_home_values(void)
         lv_label_set_text(s_label_setting_battery_value, buf);
     }
 
-    if (s_label_setting_station_value) {
-        lv_label_set_text(s_label_setting_station_value, "所有服务器");
-    }
-
     if (s_label_setting_qso_value) {
         if (cfg->qso_count_valid) {
             char buf[24];
@@ -1686,7 +1948,14 @@ static void settings_refresh_home_values(void)
     if (s_label_setting_rotate_value) {
         lv_label_set_text(
             s_label_setting_rotate_value,
-            cfg->screen_rotate_180 ? "180°" : "正常"
+            settings_rotation_text(cfg ? cfg->screen_rotation : APP_SCREEN_ROTATION_0)
+        );
+    }
+
+    if (s_label_setting_theme_value) {
+        lv_label_set_text(
+            s_label_setting_theme_value,
+            settings_applied_theme_text()
         );
     }
 }
@@ -1694,6 +1963,524 @@ static void settings_refresh_home_values(void)
 /* -------------------------------------------------------------------------- */
 /* Settings page: power save, QSO sync and screen rotation                    */
 /* -------------------------------------------------------------------------- */
+
+static void settings_profile_render(void)
+{
+    const app_settings_t *cfg = app_settings_get();
+    uint8_t active = cfg ? cfg->active_profile_index : 0;
+
+    if (active >= APP_CONNECTION_PROFILE_MAX) {
+        active = 0;
+    }
+
+    if (s_profile_list_selected > APP_CONNECTION_PROFILE_MAX) {
+        s_profile_list_selected = 0;
+    }
+
+    for (uint8_t i = 0; i < APP_CONNECTION_PROFILE_MAX; i++) {
+        if (!s_profile_item_labels[i]) {
+            continue;
+        }
+
+        const app_connection_profile_t *profile =
+            cfg ? &cfg->connection_profiles[i] : NULL;
+        const char *name = (profile && profile->name[0]) ?
+            profile->name : "配置";
+        bool configured = profile &&
+            profile->wifi_ssid[0] &&
+            profile->fmo_host[0];
+
+        char buf[48];
+        snprintf(buf,
+                 sizeof(buf),
+                 "%s%u %s %s",
+                 (i == active) ? "*" : "",
+                 (unsigned)(i + 1),
+                 name,
+                 configured ? "已配置" : "未设置");
+
+        lv_label_set_text(s_profile_item_labels[i], buf);
+        label_set_color(s_profile_item_labels[i],
+                        (s_profile_list_selected == i) ?
+                            UI_COLOR_ON_ACCENT : UI_COLOR_WHITE);
+
+        if (s_profile_item_btns[i]) {
+            make_clean_obj(s_profile_item_btns[i],
+                           (s_profile_list_selected == i) ? UI_COLOR_ORANGE :
+                               ((i == active) ? UI_COLOR_ORANGE_DARK :
+                                   UI_COLOR_PANEL),
+                           LV_OPA_COVER);
+            lv_obj_set_style_radius(s_profile_item_btns[i],
+                                    4,
+                                    LV_PART_MAIN);
+            lv_obj_set_style_border_width(
+                s_profile_item_btns[i],
+                (s_profile_list_selected == i) ? 3 : 0,
+                LV_PART_MAIN
+            );
+            lv_obj_set_style_border_color(s_profile_item_btns[i],
+                                          UI_COLOR_WHITE,
+                                          LV_PART_MAIN);
+        }
+    }
+
+    if (s_profile_back_label) {
+        label_set_color(s_profile_back_label,
+                        (s_profile_list_selected == APP_CONNECTION_PROFILE_MAX) ?
+                            UI_COLOR_ON_ACCENT : UI_COLOR_WHITE);
+    }
+
+    if (s_profile_back_btn) {
+        make_clean_obj(s_profile_back_btn,
+                       (s_profile_list_selected == APP_CONNECTION_PROFILE_MAX) ?
+                           UI_COLOR_ORANGE : UI_COLOR_PANEL,
+                       LV_OPA_COVER);
+        lv_obj_set_style_radius(s_profile_back_btn, 4, LV_PART_MAIN);
+        lv_obj_set_style_border_width(
+            s_profile_back_btn,
+            (s_profile_list_selected == APP_CONNECTION_PROFILE_MAX) ? 3 : 0,
+            LV_PART_MAIN
+        );
+        lv_obj_set_style_border_color(s_profile_back_btn,
+                                      UI_COLOR_WHITE,
+                                      LV_PART_MAIN);
+    }
+}
+
+static void settings_profile_open_event_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    settings_hide_keyboard();
+
+    if (s_main_screen && lv_scr_act() != s_main_screen) {
+        lv_scr_load(s_main_screen);
+    }
+
+    if (s_settings_page) {
+        lv_obj_clear_flag(s_settings_page, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_settings_page);
+        lv_obj_scroll_to(s_settings_page, 0, 0, LV_ANIM_OFF);
+        lv_obj_scroll_to_x(s_settings_page, 0, LV_ANIM_OFF);
+        lv_obj_scroll_to_y(s_settings_page, 0, LV_ANIM_OFF);
+    }
+
+    if (s_settings_home) {
+        lv_obj_add_flag(s_settings_home, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_fmo_page) {
+        lv_obj_add_flag(s_settings_fmo_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_callsign_page) {
+        lv_obj_add_flag(s_settings_callsign_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_volume_page) {
+        lv_obj_add_flag(s_settings_volume_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_backlight_page) {
+        lv_obj_add_flag(s_settings_backlight_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_wifi_page) {
+        lv_obj_add_flag(s_settings_wifi_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_wifi_scan_page) {
+        lv_obj_add_flag(s_settings_wifi_scan_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_battery_page) {
+        lv_obj_add_flag(s_settings_battery_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_station_page) {
+        lv_obj_add_flag(s_settings_station_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_profile_detail_page) {
+        lv_obj_add_flag(s_settings_profile_detail_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_profile_page) {
+        settings_profile_page_rebuild();
+        lv_obj_clear_flag(s_settings_profile_page, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_pos(s_settings_profile_page, 0, 42);
+        lv_obj_move_foreground(s_settings_profile_page);
+        lv_obj_scroll_to(s_settings_profile_page, 0, 0, LV_ANIM_OFF);
+        lv_obj_scroll_to_x(s_settings_profile_page, 0, LV_ANIM_OFF);
+        lv_obj_scroll_to_y(s_settings_profile_page, 0, LV_ANIM_OFF);
+        lv_obj_invalidate(s_settings_profile_page);
+    }
+
+    settings_profile_render();
+    app_ui_focus_rebuild_active();
+    if (s_settings_profile_page) {
+        lv_obj_scroll_to(s_settings_profile_page, 0, 0, LV_ANIM_OFF);
+    }
+}
+
+static bool settings_profile_list_is_visible(void)
+{
+    return s_settings_page &&
+        !lv_obj_has_flag(s_settings_page, LV_OBJ_FLAG_HIDDEN) &&
+        s_settings_profile_page &&
+        !lv_obj_has_flag(s_settings_profile_page, LV_OBJ_FLAG_HIDDEN) &&
+        (!s_settings_profile_detail_page ||
+            lv_obj_has_flag(s_settings_profile_detail_page, LV_OBJ_FLAG_HIDDEN));
+}
+
+static void settings_profile_list_move(int delta)
+{
+    int selected = (int)s_profile_list_selected + delta;
+    int max = (int)APP_CONNECTION_PROFILE_MAX;
+
+    if (selected < 0) {
+        selected = max;
+    } else if (selected > max) {
+        selected = 0;
+    }
+
+    s_profile_list_selected = (uint8_t)selected;
+    settings_profile_render();
+}
+
+static void settings_profile_list_activate(void)
+{
+    if (s_profile_list_selected < APP_CONNECTION_PROFILE_MAX) {
+        settings_profile_detail_show(s_profile_list_selected);
+        return;
+    }
+
+    settings_show_home();
+    app_ui_focus_rebuild_active();
+}
+
+bool lv_port_m5_key_intercept(uint32_t raw_key)
+{
+    if (s_settings_profile_select_editing) {
+        bool selector_visible = s_settings_page &&
+            !lv_obj_has_flag(s_settings_page, LV_OBJ_FLAG_HIDDEN) &&
+            s_settings_home &&
+            !lv_obj_has_flag(s_settings_home, LV_OBJ_FLAG_HIDDEN);
+
+        if (!selector_visible) {
+            s_settings_profile_select_editing = false;
+            return false;
+        }
+
+        if (raw_key == 2) {
+            if (s_settings_edit_profile_index == APP_CONNECTION_PROFILE_MAX) {
+                s_settings_edit_profile_index = APP_CONNECTION_PROFILE_MAX - 1;
+            } else if (s_settings_edit_profile_index == 0) {
+                s_settings_edit_profile_index = APP_CONNECTION_PROFILE_MAX;
+            } else {
+                s_settings_edit_profile_index--;
+            }
+            settings_refresh_home_values();
+            return true;
+        }
+
+        if (raw_key == 1) {
+            if (s_settings_edit_profile_index == APP_CONNECTION_PROFILE_MAX) {
+                s_settings_edit_profile_index = 0;
+            } else if (s_settings_edit_profile_index >=
+                       APP_CONNECTION_PROFILE_MAX - 1) {
+                s_settings_edit_profile_index = APP_CONNECTION_PROFILE_MAX;
+            } else {
+                s_settings_edit_profile_index++;
+            }
+            settings_refresh_home_values();
+            return true;
+        }
+
+        if (raw_key == 5) {
+            if (s_settings_edit_profile_index == APP_CONNECTION_PROFILE_MAX) {
+                s_settings_edit_profile_index =
+                    s_settings_profile_select_saved_index;
+                app_ui_update_status("返回设置");
+            } else {
+                app_ui_update_status("配置已选择");
+            }
+            s_settings_profile_select_editing = false;
+            settings_refresh_home_values();
+            app_ui_focus_rebuild_active();
+            return true;
+        }
+
+        return false;
+    }
+
+    if (!settings_profile_list_is_visible()) {
+        return false;
+    }
+
+    if (raw_key == 2) {
+        settings_profile_list_move(-1);
+        return true;
+    }
+
+    if (raw_key == 1) {
+        settings_profile_list_move(1);
+        return true;
+    }
+
+    if (raw_key == 5) {
+        settings_profile_list_activate();
+        return true;
+    }
+
+    return false;
+}
+
+static void settings_profile_select_event_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    const app_settings_t *cfg = app_settings_get();
+    if (s_settings_edit_profile_index >= APP_CONNECTION_PROFILE_MAX) {
+        s_settings_edit_profile_index = cfg ? cfg->active_profile_index : 0;
+    }
+
+    if (s_settings_edit_profile_index >= APP_CONNECTION_PROFILE_MAX) {
+        s_settings_edit_profile_index = 0;
+    }
+
+    if (!s_settings_profile_select_editing) {
+        s_settings_profile_select_saved_index = s_settings_edit_profile_index;
+        s_settings_profile_select_editing = true;
+    } else {
+        if (s_settings_edit_profile_index == APP_CONNECTION_PROFILE_MAX) {
+            s_settings_edit_profile_index = s_settings_profile_select_saved_index;
+            app_ui_update_status("返回设置");
+        } else {
+            app_ui_update_status("配置已选择");
+        }
+        s_settings_profile_select_editing = false;
+    }
+
+    settings_refresh_home_values();
+    if (s_settings_profile_select_editing) {
+        app_ui_update_status("A/C选择配置");
+    }
+}
+
+static void settings_profile_network_event_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    if (s_settings_edit_profile_index == APP_CONNECTION_PROFILE_MAX) {
+        s_settings_edit_profile_index = s_settings_profile_select_saved_index;
+    }
+
+    if (s_settings_edit_profile_index >= APP_CONNECTION_PROFILE_MAX) {
+        const app_settings_t *cfg = app_settings_get();
+        s_settings_edit_profile_index = cfg ? cfg->active_profile_index : 0;
+    }
+
+    if (s_settings_edit_profile_index >= APP_CONNECTION_PROFILE_MAX) {
+        s_settings_edit_profile_index = 0;
+    }
+
+    s_settings_profile_select_editing = false;
+    settings_profile_detail_show(s_settings_edit_profile_index);
+}
+
+static void settings_profile_detail_show(uint8_t index)
+{
+    if (index >= APP_CONNECTION_PROFILE_MAX) {
+        return;
+    }
+
+    settings_hide_keyboard();
+    s_profile_detail_index = index;
+    s_settings_edit_profile_index = index;
+
+    if (s_main_screen && lv_scr_act() != s_main_screen) {
+        lv_scr_load(s_main_screen);
+    }
+
+    if (s_settings_page) {
+        lv_obj_clear_flag(s_settings_page, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_settings_page);
+        lv_obj_scroll_to(s_settings_page, 0, 0, LV_ANIM_OFF);
+    }
+
+    if (s_settings_home) {
+        lv_obj_add_flag(s_settings_home, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_profile_page) {
+        lv_obj_add_flag(s_settings_profile_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_profile_detail_page) {
+        lv_obj_add_flag(s_settings_profile_detail_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_profile_detail_page) {
+        lv_obj_add_flag(s_settings_profile_detail_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_profile_detail_page) {
+        lv_obj_clear_flag(s_settings_profile_detail_page, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_settings_profile_detail_page);
+    }
+
+    settings_profile_detail_render();
+    app_ui_focus_rebuild_active();
+}
+
+static void settings_profile_detail_render(void)
+{
+    const app_settings_t *cfg = app_settings_get();
+    const app_connection_profile_t *profile = NULL;
+    uint8_t active = cfg ? cfg->active_profile_index : 0;
+
+    if (cfg && s_profile_detail_index < APP_CONNECTION_PROFILE_MAX) {
+        profile = &cfg->connection_profiles[s_profile_detail_index];
+    }
+
+    if (s_label_profile_detail_title) {
+        char title[24];
+        snprintf(title,
+                 sizeof(title),
+                 "配置%u详情",
+                 (unsigned)(s_profile_detail_index + 1));
+        lv_label_set_text(s_label_profile_detail_title, title);
+    }
+
+    if (s_label_profile_detail_wifi) {
+        lv_label_set_text(
+            s_label_profile_detail_wifi,
+            (profile && profile->wifi_ssid[0]) ? profile->wifi_ssid : "未设置"
+        );
+    }
+
+    if (s_label_profile_detail_fmo) {
+        lv_label_set_text(
+            s_label_profile_detail_fmo,
+            (profile && profile->fmo_host[0]) ? profile->fmo_host : "未设置"
+        );
+    }
+
+    if (s_label_profile_detail_ddns) {
+        lv_label_set_text(
+            s_label_profile_detail_ddns,
+            (profile && profile->ddns_remote_enabled) ? "开" : "关"
+        );
+    }
+
+    bool usable = profile && profile->wifi_ssid[0] && profile->fmo_host[0];
+
+    if (s_label_profile_detail_sync) {
+        lv_label_set_text(s_label_profile_detail_sync,
+                          (cfg && cfg->qso_count_valid) ? "同步" : "未同步");
+    }
+
+    if (s_label_profile_detail_save) {
+        lv_label_set_text(s_label_profile_detail_save,
+                          usable ? "已保存" : "未保存");
+    }
+
+    if (s_label_profile_detail_enable) {
+        lv_label_set_text(s_label_profile_detail_enable,
+                          (cfg && usable && s_profile_detail_index == active) ?
+                              "已启用" : "未启用");
+    }
+}
+
+static void settings_profile_detail_save_event_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    const app_settings_t *cfg = app_settings_get();
+    const app_connection_profile_t *profile = NULL;
+
+    if (cfg && s_profile_detail_index < APP_CONNECTION_PROFILE_MAX) {
+        profile = &cfg->connection_profiles[s_profile_detail_index];
+    }
+
+    if (profile && profile->wifi_ssid[0] && profile->fmo_host[0]) {
+        app_ui_update_status("配置已保存");
+    } else {
+        app_ui_update_status("配置未完整");
+    }
+
+    settings_profile_detail_render();
+    app_ui_focus_rebuild_active();
+}
+
+static void settings_profile_detail_enable_event_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    esp_err_t ret = app_settings_set_active_profile(s_profile_detail_index);
+    if (ret == ESP_OK) {
+        app_ui_update_status("连接配置已切换");
+        settings_refresh_home_values();
+        settings_show_home();
+    } else if (ret == ESP_ERR_INVALID_STATE) {
+        app_ui_update_status("配置槽未设置");
+    } else {
+        app_ui_update_status("切换配置失败");
+    }
+
+    settings_profile_render();
+    app_ui_focus_rebuild_active();
+}
+
+static void settings_profile_detail_wifi_event_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    s_settings_edit_profile_index = s_profile_detail_index;
+    settings_wifi_open_event_cb(NULL);
+}
+
+static void settings_profile_detail_fmo_event_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    s_settings_edit_profile_index = s_profile_detail_index;
+    settings_fmo_open_event_cb(NULL);
+}
+
+static void settings_profile_detail_ddns_event_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    const app_settings_t *cfg = app_settings_get();
+    if (!cfg || s_profile_detail_index >= APP_CONNECTION_PROFILE_MAX) {
+        app_ui_update_status("DDNS切换失败");
+        return;
+    }
+
+    const app_connection_profile_t *profile =
+        &cfg->connection_profiles[s_profile_detail_index];
+    bool enabled = !profile->ddns_remote_enabled;
+
+    esp_err_t ret = app_settings_set_profile_ddns_remote(
+        s_profile_detail_index,
+        enabled
+    );
+
+    if (ret == ESP_OK) {
+        app_ui_update_status(enabled ? "DDNS远程开启" : "DDNS远程关闭");
+        settings_profile_detail_render();
+    } else {
+        app_ui_update_status("DDNS切换失败");
+    }
+}
+
+static void settings_profile_detail_status_event_cb(lv_event_t *e)
+{
+    const char *text = (const char *)lv_event_get_user_data(e);
+    app_ui_update_status(text ? text : "配置项待接入");
+}
 
 static void settings_power_save_toggle_event_cb(lv_event_t *e)
 {
@@ -1703,6 +2490,10 @@ static void settings_power_save_toggle_event_cb(lv_event_t *e)
 
     settings_refresh_home_values();
     power_save_button_update_style();
+
+    app_ui_update_status(
+        app_power_save_is_manual_enabled() ? "低亮省电" : "正常亮度"
+    );
 }
 
 static void settings_qso_sync_event_cb(lv_event_t *e)
@@ -1725,21 +2516,42 @@ static void settings_rotate_toggle_event_cb(lv_event_t *e)
 
     const app_settings_t *cfg = app_settings_get();
 
-    bool old_val = cfg ? cfg->screen_rotate_180 : false;
-    bool new_val = !old_val;
+    uint16_t old_rotation = cfg ? cfg->screen_rotation : APP_SCREEN_ROTATION_0;
+    uint16_t new_rotation = APP_SCREEN_ROTATION_0;
 
-    esp_err_t ret = app_settings_set_screen_rotate_180(new_val);
+    new_rotation = (old_rotation == APP_SCREEN_ROTATION_180) ?
+        APP_SCREEN_ROTATION_0 : APP_SCREEN_ROTATION_180;
+
+    esp_err_t ret = app_settings_set_screen_rotation(new_rotation);
     if (ret == ESP_OK) {
         settings_refresh_home_values();
 
         /*
          * 当前项目设计为保存后重启生效。
          * 如果后续希望立即生效，可在这里调用：
-         * app_ui_apply_screen_rotation(new_val);
+         * app_ui_apply_screen_rotation_degrees(new_rotation);
          */
         app_ui_update_status("旋转重启生效");
     } else {
         app_ui_update_status("旋转保存失败");
+    }
+}
+
+static void settings_theme_toggle_event_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    const app_settings_t *cfg = app_settings_get();
+    uint8_t old_theme = cfg ? cfg->ui_theme : APP_UI_THEME_DARK;
+    uint8_t new_theme = (old_theme == APP_UI_THEME_LIGHT) ?
+        APP_UI_THEME_DARK : APP_UI_THEME_LIGHT;
+
+    esp_err_t ret = app_settings_set_ui_theme(new_theme);
+    if (ret == ESP_OK) {
+        settings_refresh_home_values();
+        app_ui_update_status("主题已保存重启生效");
+    } else {
+        app_ui_update_status("主题保存失败");
     }
 }
 
@@ -1763,6 +2575,10 @@ static void settings_wifi_open_event_cb(lv_event_t *e)
         lv_obj_add_flag(s_settings_fmo_page, LV_OBJ_FLAG_HIDDEN);
     }
 
+    if (s_settings_profile_page) {
+        lv_obj_add_flag(s_settings_profile_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
     if (s_settings_volume_page) {
         lv_obj_add_flag(s_settings_volume_page, LV_OBJ_FLAG_HIDDEN);
     }
@@ -1773,19 +2589,46 @@ static void settings_wifi_open_event_cb(lv_event_t *e)
 
     if (s_settings_wifi_page) {
         lv_obj_clear_flag(s_settings_wifi_page, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_settings_wifi_page);
     }
 
     if (cfg) {
+        uint8_t index = s_settings_edit_profile_index;
+        if (index >= APP_CONNECTION_PROFILE_MAX) {
+            index = cfg->active_profile_index;
+        }
+
+        const app_connection_profile_t *profile =
+            &cfg->connection_profiles[index];
+
+        if (s_label_wifi_page_title) {
+            char title[32];
+            snprintf(title,
+                     sizeof(title),
+                     "WiFi设置 配置%u",
+                     (unsigned)(index + 1));
+            lv_label_set_text(s_label_wifi_page_title, title);
+        }
+
         if (s_ta_wifi_ssid) {
-            lv_textarea_set_text(s_ta_wifi_ssid, cfg->wifi_ssid);
+            lv_textarea_set_text(s_ta_wifi_ssid, profile->wifi_ssid);
         }
 
         if (s_ta_wifi_password) {
-            lv_textarea_set_text(s_ta_wifi_password, cfg->wifi_password);
+            lv_textarea_set_text(s_ta_wifi_password, profile->wifi_password);
         }
     }
 
     app_ui_focus_rebuild_active();
+
+#if BOARD_HAS_M5_BUTTONS
+    if (s_btn_wifi_scan) {
+        lv_group_t *group = lv_group_get_default();
+        if (group) {
+            lv_group_focus_obj(s_btn_wifi_scan);
+        }
+    }
+#endif
 }
 
 static void settings_wifi_save_event_cb(lv_event_t *e)
@@ -1806,11 +2649,14 @@ static void settings_wifi_save_event_cb(lv_event_t *e)
         return;
     }
 
-    esp_err_t ret = app_settings_set_wifi(ssid, password ? password : "");
+    esp_err_t ret = app_settings_set_profile_wifi(
+        s_settings_edit_profile_index,
+        ssid,
+        password ? password : ""
+    );
     if (ret == ESP_OK) {
         app_ui_update_status("WiFi已保存");
-        settings_refresh_home_values();
-        settings_show_home();
+        settings_profile_detail_show(s_settings_edit_profile_index);
     } else {
         app_ui_update_status("WiFi保存失败");
     }
@@ -1866,6 +2712,7 @@ static void settings_wifi_scan_open_event_cb(lv_event_t *e)
 
     if (s_settings_wifi_scan_page) {
         lv_obj_clear_flag(s_settings_wifi_scan_page, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_settings_wifi_scan_page);
     }
 
     app_ui_focus_rebuild_active();
@@ -1981,6 +2828,7 @@ static void settings_wifi_scan_item_event_cb(lv_event_t *e)
 
     if (s_settings_wifi_page) {
         lv_obj_clear_flag(s_settings_wifi_page, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_settings_wifi_page);
     }
 
     app_ui_focus_rebuild_active();
@@ -2245,10 +3093,22 @@ static void settings_hide_keyboard(void)
 
 static void settings_show_home(void)
 {
+    s_settings_profile_select_editing = false;
+
     settings_slider_edit_set(s_slider_volume, false);
     settings_slider_edit_set(s_slider_backlight, false);
 
     settings_hide_keyboard();
+
+    if (s_main_screen && lv_scr_act() != s_main_screen) {
+        lv_scr_load(s_main_screen);
+    }
+
+    if (s_settings_page) {
+        lv_obj_clear_flag(s_settings_page, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_settings_page);
+        lv_obj_scroll_to(s_settings_page, 0, 0, LV_ANIM_OFF);
+    }
 
     if (s_settings_home) {
         lv_obj_clear_flag(s_settings_home, LV_OBJ_FLAG_HIDDEN);
@@ -2256,6 +3116,14 @@ static void settings_show_home(void)
 
     if (s_settings_fmo_page) {
         lv_obj_add_flag(s_settings_fmo_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_profile_page) {
+        lv_obj_add_flag(s_settings_profile_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_profile_detail_page) {
+        lv_obj_add_flag(s_settings_profile_detail_page, LV_OBJ_FLAG_HIDDEN);
     }
 
     if (s_settings_callsign_page) {
@@ -2295,6 +3163,7 @@ static void settings_close_event_cb(lv_event_t *e)
     LV_UNUSED(e);
 
     settings_hide_keyboard();
+    s_settings_profile_select_editing = false;
 
     if (s_settings_page) {
         lv_obj_add_flag(s_settings_page, LV_OBJ_FLAG_HIDDEN);
@@ -2311,6 +3180,15 @@ static void settings_open_event_cb(lv_event_t *e)
         return;
     }
 
+    const app_settings_t *cfg = app_settings_get();
+    if (cfg && s_settings_edit_profile_index >= APP_CONNECTION_PROFILE_MAX) {
+        s_settings_edit_profile_index = cfg->active_profile_index;
+    }
+    if (s_settings_edit_profile_index >= APP_CONNECTION_PROFILE_MAX) {
+        s_settings_edit_profile_index = 0;
+    }
+    s_settings_profile_select_editing = false;
+
     settings_refresh_home_values();
     settings_show_home();
 
@@ -2323,6 +3201,7 @@ static void settings_back_home_event_cb(lv_event_t *e)
 {
     LV_UNUSED(e);
 
+    s_settings_profile_select_editing = false;
     settings_show_home();
     app_ui_focus_rebuild_active();
 }
@@ -2455,9 +3334,9 @@ static void power_save_button_event_cb(lv_event_t *e)
     settings_refresh_home_values();
 
     if (app_power_save_is_manual_enabled()) {
-        app_ui_update_status("节能模式");
+        app_ui_update_status("低亮省电");
     } else {
-        app_ui_update_status("正常模式");
+        app_ui_update_status("正常亮度");
     }
 }
 
@@ -2477,14 +3356,42 @@ static void settings_fmo_open_event_cb(lv_event_t *e)
 
     if (s_settings_fmo_page) {
         lv_obj_clear_flag(s_settings_fmo_page, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_settings_fmo_page);
+    }
+
+    if (s_settings_profile_page) {
+        lv_obj_add_flag(s_settings_profile_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_profile_detail_page) {
+        lv_obj_add_flag(s_settings_profile_detail_page, LV_OBJ_FLAG_HIDDEN);
     }
 
     if (s_settings_volume_page) {
         lv_obj_add_flag(s_settings_volume_page, LV_OBJ_FLAG_HIDDEN);
     }
 
-    if (s_ta_fmo_host && cfg) {
-        lv_textarea_set_text(s_ta_fmo_host, cfg->fmo_host);
+    if (cfg) {
+        uint8_t index = s_settings_edit_profile_index;
+        if (index >= APP_CONNECTION_PROFILE_MAX) {
+            index = cfg->active_profile_index;
+        }
+
+        const app_connection_profile_t *profile =
+            &cfg->connection_profiles[index];
+
+        if (s_ta_fmo_host) {
+            lv_textarea_set_text(s_ta_fmo_host, profile->fmo_host);
+        }
+
+        if (s_label_fmo_page_title) {
+        char title[32];
+        snprintf(title,
+                 sizeof(title),
+                 "FMO地址 配置%u",
+                 (unsigned)(index + 1));
+        lv_label_set_text(s_label_fmo_page_title, title);
+        }
     }
 
     if (s_settings_keyboard && s_ta_fmo_host) {
@@ -2513,15 +3420,17 @@ static void settings_fmo_save_event_cb(lv_event_t *e)
 
     const char *host = lv_textarea_get_text(s_ta_fmo_host);
     if (!host || host[0] == '\0') {
-        app_ui_update_status("IP不能为空");
+        app_ui_update_status("Host不能为空");
         return;
     }
 
-    esp_err_t ret = app_settings_set_fmo_host(host);
+    esp_err_t ret = app_settings_set_profile_fmo_host(
+        s_settings_edit_profile_index,
+        host
+    );
     if (ret == ESP_OK) {
         app_ui_update_status("FMO地址已保存");
-        settings_refresh_home_values();
-        settings_show_home();
+        settings_profile_detail_show(s_settings_edit_profile_index);
     } else {
         app_ui_update_status("FMO地址保存失败");
     }
@@ -2937,19 +3846,63 @@ static lv_obj_t *settings_create_row(lv_obj_t *parent,
     lv_obj_t *label_name = lv_label_create(btn);
     lv_label_set_text(label_name, name ? name : "");
     label_set_color(label_name, UI_COLOR_WHITE);
-    label_set_font(label_name, ui_font_status());
+    label_set_font(label_name, ui_font_cn());
     lv_obj_align(label_name, LV_ALIGN_LEFT_MID, 8, 0);
 
     lv_obj_t *label_value = lv_label_create(btn);
     lv_label_set_text(label_value, value ? value : "");
     label_set_color(label_value, UI_COLOR_ORANGE);
-    label_set_font(label_value, ui_font_status());
+    label_set_font(label_value, ui_font_cn());
     lv_obj_set_width(label_value, 145);
     lv_label_set_long_mode(label_value, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_align(label_value,
                                 LV_TEXT_ALIGN_RIGHT,
                                 LV_PART_MAIN);
     lv_obj_align(label_value, LV_ALIGN_RIGHT_MID, -8, 0);
+
+    return label_value;
+}
+
+static lv_obj_t *settings_create_profile_detail_row(lv_obj_t *parent,
+                                                    const char *name,
+                                                    const char *value,
+                                                    int y,
+                                                    lv_event_cb_t cb,
+                                                    void *user_data)
+{
+    lv_obj_t *row = lv_obj_create(parent);
+    make_clean_obj(row, UI_COLOR_PANEL, LV_OPA_COVER);
+    lv_obj_set_size(row, LV_PCT(90), 20);
+    lv_obj_align(row, LV_ALIGN_TOP_MID, 0, y);
+    lv_obj_set_style_radius(row, 4, LV_PART_MAIN);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+
+    if (cb) {
+        lv_obj_add_event_cb(row, cb, LV_EVENT_CLICKED, user_data);
+    }
+
+    lv_obj_t *label_name = lv_label_create(parent);
+    lv_label_set_text(label_name, name ? name : "");
+    label_set_color(label_name, UI_COLOR_WHITE);
+    label_set_font(label_name, ui_font_cn());
+    lv_obj_set_width(label_name, 98);
+    lv_label_set_long_mode(label_name, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(label_name,
+                                LV_TEXT_ALIGN_LEFT,
+                                LV_PART_MAIN);
+    lv_obj_align(label_name, LV_ALIGN_TOP_LEFT, 24, y + 3);
+
+    lv_obj_t *label_value = lv_label_create(parent);
+    lv_label_set_text(label_value, value ? value : "");
+    label_set_color(label_value, UI_COLOR_ORANGE);
+    label_set_font(label_value, ui_font_cn());
+    lv_obj_set_width(label_value, 138);
+    lv_label_set_long_mode(label_value, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(label_value,
+                                LV_TEXT_ALIGN_RIGHT,
+                                LV_PART_MAIN);
+    lv_obj_align(label_value, LV_ALIGN_TOP_RIGHT, -24, y + 3);
 
     return label_value;
 }
@@ -2984,7 +3937,7 @@ static lv_obj_t *settings_create_action_button(lv_obj_t *parent,
     lv_obj_t *label = lv_label_create(btn);
     lv_label_set_text(label, text ? text : "");
     label_set_color(label, fg);
-    label_set_font(label, ui_font_status());
+    label_set_font(label, ui_font_cn());
     lv_obj_center(label);
 
     return btn;
@@ -3017,16 +3970,34 @@ static void create_settings_home(lv_obj_t *parent)
 
     const app_settings_t *cfg = app_settings_get();
 
-    s_label_setting_fmo_value = settings_create_row(
+    if (cfg && s_settings_edit_profile_index >= APP_CONNECTION_PROFILE_MAX) {
+        s_settings_edit_profile_index = cfg->active_profile_index;
+    }
+
+    if (s_settings_edit_profile_index >= APP_CONNECTION_PROFILE_MAX) {
+        s_settings_edit_profile_index = 0;
+    }
+
+    char profile_buf[32];
+    settings_format_selected_profile(profile_buf, sizeof(profile_buf));
+
+    s_label_setting_profile_value = settings_create_row(
         s_settings_home,
-        "FMO地址",
-        cfg ? cfg->fmo_host : "--",
-        settings_fmo_open_event_cb
+        "选择配置",
+        profile_buf,
+        settings_profile_select_event_cb
+    );
+
+    s_label_setting_network_value = settings_create_row(
+        s_settings_home,
+        "网络配置",
+        settings_selected_profile_status_text(),
+        settings_profile_network_event_cb
     );
 
     s_label_setting_callsign_value = settings_create_row(
         s_settings_home,
-        "本机呼号",
+        "呼号设置",
         (cfg && cfg->owner_callsign[0]) ?
             cfg->owner_callsign : APP_DEFAULT_OWNER_CALLSIGN,
         settings_callsign_open_event_cb
@@ -3055,59 +4026,20 @@ static void create_settings_home(lv_obj_t *parent)
     s_label_setting_rotate_value = settings_create_row(
         s_settings_home,
         "屏幕旋转",
-        (cfg && cfg->screen_rotate_180) ? "180°" : "正常",
+        settings_rotation_text(cfg ? cfg->screen_rotation : APP_SCREEN_ROTATION_0),
         settings_rotate_toggle_event_cb
     );
 
-    s_label_setting_wifi_value = settings_create_row(
+    s_label_setting_theme_value = settings_create_row(
         s_settings_home,
-        "WiFi设置",
-        cfg ? cfg->wifi_ssid : "--",
-        settings_wifi_open_event_cb
-    );
-
-    char batt_buf[32];
-    snprintf(batt_buf,
-             sizeof(batt_buf),
-             "%u/%umV",
-             cfg ? cfg->battery_empty_mv : 3300,
-             cfg ? cfg->battery_full_mv : 4200);
-
-    s_label_setting_battery_value = settings_create_row(
-        s_settings_home,
-        "电量校准",
-        batt_buf,
-        settings_battery_open_event_cb
-    );
-
-    s_label_setting_station_value = settings_create_row(
-        s_settings_home,
-        "服务器列表",
-        "全部服务器",
-        settings_station_open_event_cb
-    );
-
-    char qso_buf[24];
-
-    if (cfg && cfg->qso_count_valid) {
-        snprintf(qso_buf,
-                 sizeof(qso_buf),
-                 "%lu",
-                 (unsigned long)cfg->qso_count);
-    } else {
-        snprintf(qso_buf, sizeof(qso_buf), "未同步");
-    }
-
-    s_label_setting_qso_value = settings_create_row(
-        s_settings_home,
-        "QSO同步",
-        qso_buf,
-        settings_qso_sync_event_cb
+        "主题",
+        settings_applied_theme_text(),
+        settings_theme_toggle_event_cb
     );
 
     s_label_setting_power_save_value = settings_create_row(
         s_settings_home,
-        "节能模式",
+        "低亮省电",
         app_power_save_is_manual_enabled() ? "开" : "关",
         settings_power_save_toggle_event_cb
     );
@@ -3135,8 +4067,175 @@ static void create_settings_home(lv_obj_t *parent)
     settings_create_action_button(bottom_row,
                                   "保存重启",
                                   UI_COLOR_ORANGE,
-                                  UI_COLOR_BG,
+                                  UI_COLOR_ON_ACCENT,
                                   settings_restart_event_cb);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Settings page: connection profile page                                      */
+/* -------------------------------------------------------------------------- */
+
+static void settings_profile_page_rebuild(void)
+{
+    if (!s_settings_profile_page) {
+        return;
+    }
+
+    lv_obj_clean(s_settings_profile_page);
+    make_clean_obj(s_settings_profile_page, UI_COLOR_BG, LV_OPA_COVER);
+    lv_obj_set_size(s_settings_profile_page, 320, 198);
+    lv_obj_set_pos(s_settings_profile_page, 0, 42);
+    lv_obj_clear_flag(s_settings_profile_page, LV_OBJ_FLAG_SCROLLABLE);
+    app_ui_disable_auto_scroll(s_settings_profile_page);
+    lv_obj_scroll_to(s_settings_profile_page, 0, 0, LV_ANIM_OFF);
+
+    for (uint8_t i = 0; i < APP_CONNECTION_PROFILE_MAX; i++) {
+        s_profile_item_btns[i] = NULL;
+        s_profile_item_labels[i] = NULL;
+    }
+    s_profile_back_btn = NULL;
+    s_profile_back_label = NULL;
+
+    lv_obj_t *title = lv_label_create(s_settings_profile_page);
+    lv_label_set_text(title, "连接配置");
+    label_set_color(title, UI_COLOR_ORANGE);
+    label_set_font(title, ui_font_cn());
+    lv_obj_set_width(title, 320);
+    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_pos(title, 0, 5);
+
+    for (uint8_t i = 0; i < APP_CONNECTION_PROFILE_MAX; i++) {
+        s_profile_item_btns[i] = lv_obj_create(s_settings_profile_page);
+        make_clean_obj(s_profile_item_btns[i], UI_COLOR_PANEL, LV_OPA_COVER);
+        lv_obj_set_size(s_profile_item_btns[i], 288, 24);
+        lv_obj_set_pos(s_profile_item_btns[i], 16, 28 + i * 28);
+        lv_obj_set_style_radius(s_profile_item_btns[i], 4, LV_PART_MAIN);
+        lv_obj_clear_flag(s_profile_item_btns[i], LV_OBJ_FLAG_SCROLLABLE);
+        app_ui_disable_auto_scroll(s_profile_item_btns[i]);
+        lv_obj_clear_flag(s_profile_item_btns[i], LV_OBJ_FLAG_CLICKABLE);
+
+        s_profile_item_labels[i] = lv_label_create(s_profile_item_btns[i]);
+        lv_label_set_text(s_profile_item_labels[i], "--");
+        label_set_color(s_profile_item_labels[i], UI_COLOR_WHITE);
+        label_set_font(s_profile_item_labels[i], ui_font_status());
+        lv_obj_set_width(s_profile_item_labels[i], LV_PCT(96));
+        lv_label_set_long_mode(s_profile_item_labels[i], LV_LABEL_LONG_DOT);
+        lv_obj_set_style_text_align(s_profile_item_labels[i],
+                                    LV_TEXT_ALIGN_CENTER,
+                                    LV_PART_MAIN);
+        lv_obj_center(s_profile_item_labels[i]);
+    }
+
+    s_profile_back_btn = lv_obj_create(s_settings_profile_page);
+    make_clean_obj(s_profile_back_btn, UI_COLOR_PANEL, LV_OPA_COVER);
+    lv_obj_set_size(s_profile_back_btn, 282, 30);
+    lv_obj_set_pos(s_profile_back_btn, 19, 160);
+    lv_obj_set_style_radius(s_profile_back_btn, 4, LV_PART_MAIN);
+    lv_obj_clear_flag(s_profile_back_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(s_profile_back_btn, LV_OBJ_FLAG_CLICKABLE);
+    app_ui_disable_auto_scroll(s_profile_back_btn);
+
+    s_profile_back_label = lv_label_create(s_profile_back_btn);
+    lv_label_set_text(s_profile_back_label, "返回");
+    label_set_color(s_profile_back_label, UI_COLOR_WHITE);
+    label_set_font(s_profile_back_label, ui_font_cn());
+    lv_obj_center(s_profile_back_label);
+
+    settings_profile_render();
+    lv_obj_scroll_to(s_settings_profile_page, 0, 0, LV_ANIM_OFF);
+}
+
+static void create_settings_profile_page(lv_obj_t *parent)
+{
+    s_settings_profile_page = lv_obj_create(parent);
+    make_clean_obj(s_settings_profile_page, UI_COLOR_BG, LV_OPA_COVER);
+    lv_obj_set_size(s_settings_profile_page, 320, 198);
+    lv_obj_set_pos(s_settings_profile_page, 0, 42);
+    lv_obj_add_flag(s_settings_profile_page, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_settings_profile_page, LV_OBJ_FLAG_SCROLLABLE);
+    app_ui_disable_auto_scroll(s_settings_profile_page);
+
+    settings_profile_page_rebuild();
+}
+
+static void create_settings_profile_detail_page(lv_obj_t *parent)
+{
+    s_settings_profile_detail_page = lv_obj_create(parent);
+    make_clean_obj(s_settings_profile_detail_page, UI_COLOR_BG, LV_OPA_COVER);
+    lv_obj_set_size(s_settings_profile_detail_page, LV_PCT(100), 198);
+    lv_obj_align(s_settings_profile_detail_page, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_add_flag(s_settings_profile_detail_page, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_settings_profile_detail_page, LV_OBJ_FLAG_SCROLLABLE);
+
+    s_label_profile_detail_title = lv_label_create(s_settings_profile_detail_page);
+    lv_label_set_text(s_label_profile_detail_title, "配置详情");
+    label_set_color(s_label_profile_detail_title, UI_COLOR_ORANGE);
+    label_set_font(s_label_profile_detail_title, ui_font_cn());
+    lv_obj_align(s_label_profile_detail_title, LV_ALIGN_TOP_MID, 0, 5);
+
+    s_label_profile_detail_wifi = settings_create_profile_detail_row(
+        s_settings_profile_detail_page,
+        "WiFi配置",
+        "未设置",
+        23,
+        settings_profile_detail_wifi_event_cb,
+        NULL
+    );
+
+    s_label_profile_detail_fmo = settings_create_profile_detail_row(
+        s_settings_profile_detail_page,
+        "FMO地址",
+        "未设置",
+        46,
+        settings_profile_detail_fmo_event_cb,
+        NULL
+    );
+
+    s_label_profile_detail_ddns = settings_create_profile_detail_row(
+        s_settings_profile_detail_page,
+        "DDNS远程",
+        "关",
+        69,
+        settings_profile_detail_ddns_event_cb,
+        NULL
+    );
+
+    s_label_profile_detail_sync = settings_create_profile_detail_row(
+        s_settings_profile_detail_page,
+        "QSQ/服务器",
+        "未同步",
+        92,
+        settings_qso_sync_event_cb,
+        NULL
+    );
+
+    s_label_profile_detail_save = settings_create_profile_detail_row(
+        s_settings_profile_detail_page,
+        "保存配置",
+        "未保存",
+        115,
+        settings_profile_detail_save_event_cb,
+        NULL
+    );
+
+    s_label_profile_detail_enable = settings_create_profile_detail_row(
+        s_settings_profile_detail_page,
+        "启用配置",
+        "未启用",
+        138,
+        settings_profile_detail_enable_event_cb,
+        NULL
+    );
+
+    lv_obj_t *btn_back = settings_create_action_button(
+        s_settings_profile_detail_page,
+        "返回",
+        UI_COLOR_PANEL,
+        UI_COLOR_WHITE,
+        settings_back_home_event_cb
+    );
+    lv_obj_set_width(btn_back, LV_PCT(88));
+    lv_obj_align(btn_back, LV_ALIGN_BOTTOM_MID, 0, -4);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -3152,11 +4251,11 @@ static void create_settings_fmo_page(lv_obj_t *parent)
     lv_obj_add_flag(s_settings_fmo_page, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(s_settings_fmo_page, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *title = lv_label_create(s_settings_fmo_page);
-    lv_label_set_text(title, "FMO IP地址");
-    label_set_color(title, UI_COLOR_ORANGE);
-    label_set_font(title, ui_font_status());
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 6);
+    s_label_fmo_page_title = lv_label_create(s_settings_fmo_page);
+    lv_label_set_text(s_label_fmo_page_title, "FMO地址 配置1");
+    label_set_color(s_label_fmo_page_title, UI_COLOR_ORANGE);
+    label_set_font(s_label_fmo_page_title, ui_font_status());
+    lv_obj_align(s_label_fmo_page_title, LV_ALIGN_TOP_MID, 0, 6);
 
     s_ta_fmo_host = lv_textarea_create(s_settings_fmo_page);
     make_clean_obj(s_ta_fmo_host, UI_COLOR_PANEL, LV_OPA_COVER);
@@ -3164,7 +4263,7 @@ static void create_settings_fmo_page(lv_obj_t *parent)
     lv_obj_align(s_ta_fmo_host, LV_ALIGN_TOP_MID, 0, 28);
     lv_textarea_set_one_line(s_ta_fmo_host, true);
     lv_textarea_set_max_length(s_ta_fmo_host, 63);
-    lv_textarea_set_placeholder_text(s_ta_fmo_host, "IP或域名");
+    lv_textarea_set_placeholder_text(s_ta_fmo_host, "Host[:Port]");
 
     lv_obj_set_style_text_color(s_ta_fmo_host, UI_COLOR_WHITE, LV_PART_MAIN);
     lv_obj_set_style_text_font(s_ta_fmo_host, ui_font_status(), LV_PART_MAIN);
@@ -3172,7 +4271,7 @@ static void create_settings_fmo_page(lv_obj_t *parent)
     lv_obj_set_style_pad_all(s_ta_fmo_host, 6, LV_PART_MAIN);
 
     lv_obj_t *hint = lv_label_create(s_settings_fmo_page);
-    lv_label_set_text(hint, "自动生成 /audio /events /ws");
+    lv_label_set_text(hint, "填写Host[:Port] 自动生成WS");
     label_set_color(hint, UI_COLOR_GRAY);
     label_set_font(hint, ui_font_status());
     lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, 66);
@@ -3190,7 +4289,7 @@ static void create_settings_fmo_page(lv_obj_t *parent)
         s_settings_fmo_page,
         "保存",
         UI_COLOR_ORANGE,
-        UI_COLOR_BG,
+        UI_COLOR_ON_ACCENT,
         settings_fmo_save_event_cb
     );
     lv_obj_align(btn_save, LV_ALIGN_TOP_RIGHT, -18, 78);
@@ -3271,7 +4370,7 @@ static void create_settings_callsign_page(lv_obj_t *parent)
         s_settings_callsign_page,
         "保存",
         UI_COLOR_ORANGE,
-        UI_COLOR_BG,
+        UI_COLOR_ON_ACCENT,
         settings_callsign_save_event_cb
     );
     lv_obj_align(btn_save, LV_ALIGN_TOP_RIGHT, -18, 104);
@@ -3362,7 +4461,7 @@ static void create_settings_volume_page(lv_obj_t *parent)
         s_settings_volume_page,
         "保存",
         UI_COLOR_ORANGE,
-        UI_COLOR_BG,
+        UI_COLOR_ON_ACCENT,
         settings_volume_save_event_cb
     );
     lv_obj_align(btn_save, LV_ALIGN_TOP_RIGHT, -18, 104);
@@ -3453,7 +4552,7 @@ static void create_settings_backlight_page(lv_obj_t *parent)
         s_settings_backlight_page,
         "保存",
         UI_COLOR_ORANGE,
-        UI_COLOR_BG,
+        UI_COLOR_ON_ACCENT,
         settings_backlight_save_event_cb
     );
     lv_obj_align(btn_save, LV_ALIGN_TOP_RIGHT, -18, 104);
@@ -3472,11 +4571,11 @@ static void create_settings_wifi_page(lv_obj_t *parent)
     lv_obj_add_flag(s_settings_wifi_page, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(s_settings_wifi_page, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *title = lv_label_create(s_settings_wifi_page);
-    lv_label_set_text(title, "WiFi设置");
-    label_set_color(title, UI_COLOR_ORANGE);
-    label_set_font(title, ui_font_status());
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 6);
+    s_label_wifi_page_title = lv_label_create(s_settings_wifi_page);
+    lv_label_set_text(s_label_wifi_page_title, "WiFi设置 配置1");
+    label_set_color(s_label_wifi_page_title, UI_COLOR_ORANGE);
+    label_set_font(s_label_wifi_page_title, ui_font_status());
+    lv_obj_align(s_label_wifi_page_title, LV_ALIGN_TOP_MID, 0, 6);
 
     s_ta_wifi_ssid = lv_textarea_create(s_settings_wifi_page);
     make_clean_obj(s_ta_wifi_ssid, UI_COLOR_PANEL, LV_OPA_COVER);
@@ -3527,15 +4626,15 @@ static void create_settings_wifi_page(lv_obj_t *parent)
                         LV_EVENT_CLICKED,
                         NULL);
 
-    lv_obj_t *btn_scan = settings_create_action_button(
+    s_btn_wifi_scan = settings_create_action_button(
         s_settings_wifi_page,
         "扫描",
         UI_COLOR_PANEL,
         UI_COLOR_ORANGE,
         settings_wifi_scan_open_event_cb
     );
-    lv_obj_set_size(btn_scan, LV_PCT(88), 26);
-    lv_obj_align(btn_scan, LV_ALIGN_TOP_MID, 0, 94);
+    lv_obj_set_size(s_btn_wifi_scan, LV_PCT(88), 26);
+    lv_obj_align(s_btn_wifi_scan, LV_ALIGN_TOP_MID, 0, 94);
 
     lv_obj_t *btn_back = settings_create_action_button(
         s_settings_wifi_page,
@@ -3550,7 +4649,7 @@ static void create_settings_wifi_page(lv_obj_t *parent)
         s_settings_wifi_page,
         "保存",
         UI_COLOR_ORANGE,
-        UI_COLOR_BG,
+        UI_COLOR_ON_ACCENT,
         settings_wifi_save_event_cb
     );
     lv_obj_align(btn_save, LV_ALIGN_TOP_RIGHT, -18, 136);
@@ -3650,7 +4749,7 @@ static void create_settings_wifi_scan_page(lv_obj_t *parent)
 
     lv_obj_t *lbl_refresh = lv_label_create(btn_refresh);
     lv_label_set_text(lbl_refresh, "刷新");
-    label_set_color(lbl_refresh, UI_COLOR_BG);
+    label_set_color(lbl_refresh, UI_COLOR_ON_ACCENT);
     label_set_font(lbl_refresh, ui_font_status());
     lv_obj_center(lbl_refresh);
 }
@@ -3786,7 +4885,7 @@ static void create_settings_battery_page(lv_obj_t *parent)
         s_settings_battery_page,
         "保存",
         UI_COLOR_ORANGE,
-        UI_COLOR_BG,
+        UI_COLOR_ON_ACCENT,
         settings_battery_save_event_cb
     );
     lv_obj_align(btn_save, LV_ALIGN_TOP_RIGHT, -18, 100);
@@ -3884,7 +4983,7 @@ static void create_settings_station_page(lv_obj_t *parent)
 
     lv_obj_t *lbl_refresh = lv_label_create(btn_refresh);
     lv_label_set_text(lbl_refresh, "刷新");
-    label_set_color(lbl_refresh, UI_COLOR_BG);
+    label_set_color(lbl_refresh, UI_COLOR_ON_ACCENT);
     label_set_font(lbl_refresh, ui_font_status());
     lv_obj_center(lbl_refresh);
 
@@ -3957,6 +5056,7 @@ static void create_settings_page(lv_obj_t *parent)
     lv_obj_align(s_settings_page, LV_ALIGN_CENTER, 0, 0);
     lv_obj_add_flag(s_settings_page, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(s_settings_page, LV_OBJ_FLAG_SCROLLABLE);
+    app_ui_disable_auto_scroll(s_settings_page);
 
     /*
      * 顶部栏。
@@ -3966,6 +5066,7 @@ static void create_settings_page(lv_obj_t *parent)
     lv_obj_set_size(top, LV_PCT(100), 42);
     lv_obj_align(top, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_clear_flag(top, LV_OBJ_FLAG_SCROLLABLE);
+    app_ui_disable_auto_scroll(top);
 
     lv_obj_t *btn_back = lv_btn_create(top);
     make_clean_obj(btn_back, UI_COLOR_BG, LV_OPA_TRANSP);
@@ -4000,6 +5101,7 @@ static void create_settings_page(lv_obj_t *parent)
      * 子页面统一挂载在设置页根对象下。
      */
     create_settings_home(s_settings_page);
+    create_settings_profile_detail_page(s_settings_page);
     create_settings_fmo_page(s_settings_page);
     create_settings_callsign_page(s_settings_page);
     create_settings_volume_page(s_settings_page);
@@ -4011,6 +5113,10 @@ static void create_settings_page(lv_obj_t *parent)
     create_settings_keyboard(s_settings_page);
 
     settings_show_home();
+
+    if (s_settings_page) {
+        lv_obj_add_flag(s_settings_page, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -4330,7 +5436,7 @@ static void create_top_status_area(lv_obj_t *parent)
      */
     s_img_wifi_icon = lv_img_create(s_top_status_group);
     lv_img_set_src(s_img_wifi_icon, &ui_icon_wifi);
-    img_set_color(s_img_wifi_icon, UI_COLOR_RED);
+    img_set_color(s_img_wifi_icon, UI_COLOR_GREEN);
 
     /*
      * 电池图标。
@@ -4364,7 +5470,7 @@ static void create_speaking_pill(lv_obj_t *parent)
      * RX 比 ON AIR 更短，更适合小胶囊。
      */
     lv_label_set_text(s_label_speaking, "RX");
-    label_set_color(s_label_speaking, UI_COLOR_BG);
+    label_set_color(s_label_speaking, UI_COLOR_ON_ACCENT);
     label_set_font(s_label_speaking, ui_font_status());
     lv_obj_center(s_label_speaking);
 }
@@ -4409,6 +5515,7 @@ static void create_top_area(lv_obj_t *parent)
      * 稍微下移，避免和右上角日期状态栏冲突。
      */
     lv_obj_align(s_label_current_call, LV_ALIGN_CENTER, 0, 14);
+
 }
 
 static void create_info_row_area(lv_obj_t *parent)
@@ -4524,7 +5631,7 @@ static void create_card_area(lv_obj_t *parent)
     s_label_station = lv_label_create(s_station_text_box);
     lv_label_set_text(s_label_station, "--");
 
-    label_set_color(s_label_station, UI_COLOR_BG);
+    label_set_color(s_label_station, UI_COLOR_ON_ACCENT);
     label_set_font(s_label_station, ui_font_cn());
 
     lv_obj_add_flag(s_label_station, LV_OBJ_FLAG_CLICKABLE);
@@ -4669,7 +5776,7 @@ static void create_main_station_popup(lv_obj_t *parent)
 
     lv_obj_t *lbl_refresh = lv_label_create(btn_refresh);
     lv_label_set_text(lbl_refresh, "刷新");
-    label_set_color(lbl_refresh, UI_COLOR_BG);
+    label_set_color(lbl_refresh, UI_COLOR_ON_ACCENT);
     label_set_font(lbl_refresh, ui_font_status());
     lv_obj_center(lbl_refresh);
 
@@ -4730,6 +5837,18 @@ static void create_qso_sync_popup(lv_obj_t *parent)
                                 LV_PART_MAIN);
     lv_label_set_long_mode(s_label_qso_sync_popup, LV_LABEL_LONG_DOT);
     lv_obj_align(s_label_qso_sync_popup, LV_ALIGN_CENTER, 0, 14);
+}
+
+static void create_power_save_dim_overlay(lv_obj_t *parent)
+{
+    s_power_save_dim_overlay = lv_obj_create(parent);
+    make_clean_obj(s_power_save_dim_overlay, lv_color_hex(0x000000), LV_OPA_50);
+
+    lv_obj_set_size(s_power_save_dim_overlay, LV_PCT(100), LV_PCT(100));
+    lv_obj_align(s_power_save_dim_overlay, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_add_flag(s_power_save_dim_overlay, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_power_save_dim_overlay,
+                      LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -4963,6 +6082,26 @@ bool app_ui_is_power_save_clock(void)
     return s_power_save_clock_active;
 }
 
+void app_ui_set_power_save_visual(bool enabled)
+{
+    s_power_save_visual_active = enabled;
+
+    if (!s_power_save_dim_overlay) {
+        return;
+    }
+
+    if (enabled) {
+        lv_obj_clear_flag(s_power_save_dim_overlay, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_power_save_dim_overlay);
+        app_ui_update_status("低亮省电");
+    } else {
+        lv_obj_add_flag(s_power_save_dim_overlay, LV_OBJ_FLAG_HIDDEN);
+        app_ui_update_status("正常显示");
+    }
+
+    power_save_button_update_style();
+}
+
 static void app_ui_idle_clock_event_cb(lv_event_t *e)
 {
     LV_UNUSED(e);
@@ -5030,6 +6169,12 @@ static void app_ui_idle_clock_long_press_event_cb(lv_event_t *e)
 void app_ui_create(void)
 {
     lv_obj_t *scr = lv_scr_act();
+    s_main_screen = scr;
+    const app_settings_t *cfg = app_settings_get();
+
+    s_applied_ui_theme = cfg ? cfg->ui_theme : APP_UI_THEME_DARK;
+    s_applied_ui_theme_valid = true;
+    s_power_save_visual_active = false;
 
     /*
      * 清空屏幕，避免旧 UI 或 LVGL 默认对象残留。
@@ -5072,12 +6217,11 @@ void app_ui_create(void)
     create_settings_page(s_root);
     create_idle_clock_page(s_root);
     create_qso_sync_popup(s_root);
+    create_power_save_dim_overlay(s_root);
 
     app_ui_focus_rebuild_active();
 
     ESP_LOGI(TAG, "app ui created");
-
-    const app_settings_t *cfg = app_settings_get();
 
     /*
      * 应用背光设置。
@@ -5092,7 +6236,10 @@ void app_ui_create(void)
      * 应用屏幕旋转设置。
      */
     if (cfg) {
-        app_ui_apply_screen_rotation(cfg->screen_rotate_180);
+        app_ui_apply_screen_rotation_degrees(
+            cfg->screen_rotation == APP_SCREEN_ROTATION_180 ?
+                APP_SCREEN_ROTATION_180 : APP_SCREEN_ROTATION_0
+        );
     }
 
     /*
@@ -5342,13 +6489,9 @@ void app_ui_update_wifi_rssi(int rssi_dbm)
 {
     s_wifi_rssi = rssi_dbm;
 
-    int percent = wifi_rssi_to_percent(rssi_dbm);
-
     if (s_img_wifi_icon) {
-        if (percent >= 60) {
+        if (rssi_dbm <= -100) {
             img_set_color(s_img_wifi_icon, UI_COLOR_GREEN);
-        } else if (percent >= 30) {
-            img_set_color(s_img_wifi_icon, UI_COLOR_ORANGE);
         } else {
             img_set_color(s_img_wifi_icon, UI_COLOR_RED);
         }

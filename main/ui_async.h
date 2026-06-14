@@ -151,6 +151,13 @@ void ui_async_enter_power_save_clock(void);
  */
 void ui_async_exit_power_save_clock(void);
 
+/**
+ * @brief 异步设置省电视觉暗化层。
+ *
+ * @param enabled true 表示暗化当前画面，false 表示恢复正常显示。
+ */
+void ui_async_set_power_save_visual(bool enabled);
+
 /* -------------------------------------------------------------------------- */
 /* QSO sync popup                                                             */
 /* -------------------------------------------------------------------------- */

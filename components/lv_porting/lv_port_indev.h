@@ -31,6 +31,7 @@ extern "C" {
  * GLOBAL PROTOTYPES
  **********************/
 void lv_port_indev_init(void);
+bool lv_port_m5_key_intercept(uint32_t raw_key);
 
 /**********************
  *      MACROS

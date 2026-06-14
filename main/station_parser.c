@@ -49,7 +49,22 @@ static station_cache_t s_station_cache = {0};
 static void station_item_clear(station_item_t *item);
 static void station_item_set(station_item_t *item,
                              int uid,
-                             const char *name);
+                             const char *name,
+                             const char *frequency,
+                             const char *rx_frequency,
+                             const char *tx_frequency);
+static void station_parse_frequency_keys(cJSON *obj,
+                                         const char *const *keys,
+                                         size_t key_count,
+                                         char *buf,
+                                         size_t buf_size);
+static void station_parse_frequencies(cJSON *obj,
+                                      char *frequency,
+                                      size_t frequency_size,
+                                      char *rx_frequency,
+                                      size_t rx_frequency_size,
+                                      char *tx_frequency,
+                                      size_t tx_frequency_size);
 
 static void station_cache_clear_list(station_item_t *list,
                                      int max_items,
@@ -74,12 +89,18 @@ static void station_item_clear(station_item_t *item)
 
     item->uid = -1;
     item->name[0] = '\0';
+    item->frequency[0] = '\0';
+    item->rx_frequency[0] = '\0';
+    item->tx_frequency[0] = '\0';
     item->valid = false;
 }
 
 static void station_item_set(station_item_t *item,
                              int uid,
-                             const char *name)
+                             const char *name,
+                             const char *frequency,
+                             const char *rx_frequency,
+                             const char *tx_frequency)
 {
     if (!item) {
         return;
@@ -93,6 +114,129 @@ static void station_item_set(station_item_t *item,
         item->name[sizeof(item->name) - 1] = '\0';
     } else {
         item->name[0] = '\0';
+    }
+
+    if (frequency) {
+        strncpy(item->frequency, frequency, sizeof(item->frequency) - 1);
+        item->frequency[sizeof(item->frequency) - 1] = '\0';
+    } else {
+        item->frequency[0] = '\0';
+    }
+
+    if (rx_frequency) {
+        strncpy(item->rx_frequency,
+                rx_frequency,
+                sizeof(item->rx_frequency) - 1);
+        item->rx_frequency[sizeof(item->rx_frequency) - 1] = '\0';
+    } else {
+        item->rx_frequency[0] = '\0';
+    }
+
+    if (tx_frequency) {
+        strncpy(item->tx_frequency,
+                tx_frequency,
+                sizeof(item->tx_frequency) - 1);
+        item->tx_frequency[sizeof(item->tx_frequency) - 1] = '\0';
+    } else {
+        item->tx_frequency[0] = '\0';
+    }
+}
+
+static void station_parse_frequency_keys(cJSON *obj,
+                                         const char *const *keys,
+                                         size_t key_count,
+                                         char *buf,
+                                         size_t buf_size)
+{
+    if (!buf || buf_size == 0) {
+        return;
+    }
+
+    buf[0] = '\0';
+
+    if (!cJSON_IsObject(obj)) {
+        return;
+    }
+
+    for (size_t i = 0; i < key_count; i++) {
+        cJSON *value = cJSON_GetObjectItem(obj, keys[i]);
+
+        if (cJSON_IsString(value) && value->valuestring &&
+            value->valuestring[0]) {
+            snprintf(buf, buf_size, "%s", value->valuestring);
+            return;
+        }
+
+        if (cJSON_IsNumber(value)) {
+            double freq = value->valuedouble;
+
+            if (freq > 1000000.0) {
+                snprintf(buf, buf_size, "%.3f MHz", freq / 1000000.0);
+            } else if (freq > 1000.0) {
+                snprintf(buf, buf_size, "%.3f MHz", freq / 1000.0);
+            } else {
+                snprintf(buf, buf_size, "%.3f MHz", freq);
+            }
+
+            return;
+        }
+    }
+}
+
+static void station_parse_frequencies(cJSON *obj,
+                                      char *frequency,
+                                      size_t frequency_size,
+                                      char *rx_frequency,
+                                      size_t rx_frequency_size,
+                                      char *tx_frequency,
+                                      size_t tx_frequency_size)
+{
+    static const char *const common_keys[] = {
+        "frequency",
+        "freq",
+    };
+    static const char *const rx_keys[] = {
+        "rxFreq",
+        "rxFrequency",
+        "rx_frequency",
+        "receiveFrequency",
+    };
+    static const char *const tx_keys[] = {
+        "txFreq",
+        "txFrequency",
+        "tx_frequency",
+        "transmitFrequency",
+    };
+
+    station_parse_frequency_keys(obj,
+                                 common_keys,
+                                 sizeof(common_keys) / sizeof(common_keys[0]),
+                                 frequency,
+                                 frequency_size);
+    station_parse_frequency_keys(obj,
+                                 rx_keys,
+                                 sizeof(rx_keys) / sizeof(rx_keys[0]),
+                                 rx_frequency,
+                                 rx_frequency_size);
+    station_parse_frequency_keys(obj,
+                                 tx_keys,
+                                 sizeof(tx_keys) / sizeof(tx_keys[0]),
+                                 tx_frequency,
+                                 tx_frequency_size);
+
+    if (frequency && frequency[0]) {
+        if (rx_frequency && rx_frequency_size > 0 && !rx_frequency[0]) {
+            snprintf(rx_frequency, rx_frequency_size, "%s", frequency);
+        }
+        if (tx_frequency && tx_frequency_size > 0 && !tx_frequency[0]) {
+            snprintf(tx_frequency, tx_frequency_size, "%s", frequency);
+        }
+    } else if (frequency && frequency_size > 0) {
+        if (rx_frequency && rx_frequency[0] &&
+            tx_frequency && tx_frequency[0] &&
+            strcmp(rx_frequency, tx_frequency) == 0) {
+            snprintf(frequency, frequency_size, "%s", rx_frequency);
+        }
     }
 }
 
@@ -140,6 +284,17 @@ static void station_cache_parse_list(cJSON *json_list,
 
         cJSON *uid = cJSON_GetObjectItem(item, "uid");
         cJSON *name = cJSON_GetObjectItem(item, "name");
+        char frequency[STATION_FREQ_MAX_LEN];
+        char rx_frequency[STATION_FREQ_MAX_LEN];
+        char tx_frequency[STATION_FREQ_MAX_LEN];
+
+        station_parse_frequencies(item,
+                                  frequency,
+                                  sizeof(frequency),
+                                  rx_frequency,
+                                  sizeof(rx_frequency),
+                                  tx_frequency,
+                                  sizeof(tx_frequency));
 
         if (!cJSON_IsString(name)) {
             continue;
@@ -147,7 +302,10 @@ static void station_cache_parse_list(cJSON *json_list,
 
         station_item_set(&dst_list[valid_count],
                          cJSON_IsNumber(uid) ? uid->valueint : -1,
-                         name->valuestring);
+                         name->valuestring,
+                         frequency,
+                         rx_frequency,
+                         tx_frequency);
 
         ESP_LOGI(TAG,
                  "%s[%d]: uid=%d name=%s",
@@ -202,18 +360,34 @@ void station_parser_handle_json(const char *json, int len)
 
             cJSON *uid = cJSON_GetObjectItem(data, "uid");
             cJSON *name = cJSON_GetObjectItem(data, "name");
+            char frequency[STATION_FREQ_MAX_LEN];
+            char rx_frequency[STATION_FREQ_MAX_LEN];
+            char tx_frequency[STATION_FREQ_MAX_LEN];
+
+            station_parse_frequencies(data,
+                                      frequency,
+                                      sizeof(frequency),
+                                      rx_frequency,
+                                      sizeof(rx_frequency),
+                                      tx_frequency,
+                                      sizeof(tx_frequency));
 
             if (cJSON_IsString(name)) {
                 station_item_set(&s_station_cache.current,
                                  cJSON_IsNumber(uid) ? uid->valueint : -1,
-                                 name->valuestring);
+                                 name->valuestring,
+                                 frequency,
+                                 rx_frequency,
+                                 tx_frequency);
 
                 ui_async_update_station(name->valuestring);
 
                 ESP_LOGI(TAG,
-                         "Current station: uid=%d, name=%s",
+                         "Current station: uid=%d, name=%s, rx=%s, tx=%s",
                          s_station_cache.current.uid,
-                         s_station_cache.current.name);
+                         s_station_cache.current.name,
+                         s_station_cache.current.rx_frequency,
+                         s_station_cache.current.tx_frequency);
             }
         }
     } else if (strcmp(subType->valuestring, "getListResponse") == 0) {

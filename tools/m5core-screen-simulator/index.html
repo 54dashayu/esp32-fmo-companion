@@ -1,0 +1,860 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FMO 伴侣 M5Core 屏幕模拟器</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0d10;
+      --panel: #101010;
+      --orange: #ff8800;
+      --orange-dark: #9a5200;
+      --white: #ffffff;
+      --gray: #e7eaee;
+      --green: #32d74b;
+      --red: #ff453a;
+    }
+
+    body.light {
+      color-scheme: light;
+      --bg: #f5f6f8;
+      --panel: #e7ebf0;
+      --orange: #d56a00;
+      --orange-dark: #f0c38f;
+      --white: #101418;
+      --gray: #59616c;
+      --green: #168a34;
+      --red: #c9281f;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #15181d;
+      color: var(--white);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC",
+        "Microsoft YaHei", sans-serif;
+    }
+
+    .bench {
+      display: grid;
+      gap: 16px;
+      justify-items: center;
+    }
+
+    .device {
+      width: 430px;
+      padding: 28px 34px 24px;
+      border-radius: 28px;
+      background: #20242b;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+    }
+
+    .screen {
+      position: relative;
+      width: 320px;
+      height: 240px;
+      overflow: hidden;
+      background: var(--bg);
+      border-radius: 6px;
+      box-shadow:
+        0 0 0 8px #08090b,
+        inset 0 0 0 1px #333;
+      font-size: 13px;
+      line-height: 1;
+    }
+
+    .topbar {
+      position: absolute;
+      inset: 0 0 auto;
+      height: 42px;
+      background: var(--panel);
+      display: grid;
+      grid-template-columns: 44px 1fr 64px;
+      align-items: center;
+      font-size: 15px;
+    }
+
+    .back {
+      color: var(--white);
+      text-align: center;
+      font-size: 22px;
+    }
+
+    .version {
+      color: var(--orange);
+      font-size: 12px;
+      text-align: right;
+      padding-right: 8px;
+    }
+
+    .settings-body {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 198px;
+      padding: 8px 0 4px;
+      overflow-y: auto;
+      scrollbar-width: none;
+      background: var(--bg);
+    }
+
+    .settings-body::-webkit-scrollbar {
+      display: none;
+    }
+
+    .row {
+      width: 94%;
+      height: 20px;
+      margin: 0 auto 4px;
+      padding: 0 8px;
+      display: grid;
+      grid-template-columns: 88px 1fr;
+      align-items: center;
+      border-radius: 4px;
+      background: var(--panel);
+      font-size: 13px;
+      cursor: pointer;
+      outline: 0 solid transparent;
+    }
+
+    .row.focused,
+    .action.focused,
+    .profile-row.focused {
+      outline: 3px solid var(--white);
+      box-shadow: 0 0 10px rgba(255, 136, 0, 0.8);
+    }
+
+    .value {
+      color: var(--orange);
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .actions {
+      width: 94%;
+      height: 34px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .action {
+      height: 30px;
+      border: 0;
+      border-radius: 4px;
+      background: var(--panel);
+      color: var(--white);
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .action.primary {
+      background: var(--orange);
+      color: #000;
+    }
+
+    .subpage {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 198px;
+      padding-top: 6px;
+      background: var(--bg);
+    }
+
+    .subpage.detail-page {
+      padding-top: 0;
+    }
+
+    .title {
+      color: var(--orange);
+      text-align: center;
+      font-size: 13px;
+      line-height: 16px;
+      margin: 5px 0 0;
+    }
+
+    .profile-row {
+      width: 90%;
+      height: 24px;
+      margin: 0 auto 4px;
+      display: grid;
+      place-items: center;
+      border-radius: 4px;
+      background: var(--panel);
+      color: var(--white);
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+    }
+
+    .profile-row.active {
+      background: var(--orange-dark);
+    }
+
+    .profile-row.selected,
+    .profile-back.selected {
+      background: var(--orange);
+      color: #000;
+      outline: 3px solid var(--white);
+      box-shadow: 0 0 10px rgba(255, 136, 0, 0.8);
+    }
+
+    .detail-row {
+      position: absolute;
+      left: 5%;
+      width: 90%;
+      height: 20px;
+      padding: 0 8px;
+      display: grid;
+      grid-template-columns: 98px 1fr;
+      align-items: center;
+      border-radius: 4px;
+      background: var(--panel);
+      color: var(--white);
+      font-size: 13px;
+      line-height: 13px;
+      cursor: pointer;
+    }
+
+    .profile-back {
+      position: absolute;
+      left: 6%;
+      right: 6%;
+      bottom: 4px;
+      width: 88%;
+    }
+
+    .detail-row.focused {
+      outline: 3px solid var(--white);
+      box-shadow: 0 0 10px rgba(255, 136, 0, 0.8);
+    }
+
+    .input {
+      width: 88%;
+      height: 34px;
+      margin: 8px auto 4px;
+      padding: 6px;
+      border-radius: 4px;
+      background: var(--panel);
+      color: var(--white);
+      font-size: 13px;
+    }
+
+    .hint {
+      color: var(--gray);
+      text-align: center;
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    .main {
+      position: absolute;
+      inset: 0;
+      background: var(--bg);
+    }
+
+    .datetime {
+      position: absolute;
+      top: 5px;
+      left: 70px;
+      width: 180px;
+      color: var(--gray);
+      text-align: center;
+      font-size: 12px;
+    }
+
+    .call {
+      position: absolute;
+      top: 54px;
+      width: 100%;
+      color: var(--orange);
+      text-align: center;
+      font-size: 46px;
+      letter-spacing: 2px;
+      font-weight: 700;
+    }
+
+    .station {
+      position: absolute;
+      left: 36px;
+      right: 36px;
+      top: 156px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      background: var(--orange);
+      color: #000;
+      font-weight: 700;
+      border-radius: 4px;
+      line-height: 1.15;
+      text-align: center;
+    }
+
+    .station-name {
+      font-size: 15px;
+    }
+
+    .bottom {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 36px;
+      display: grid;
+      grid-template-columns: 1fr 170px 72px;
+      align-items: center;
+      font-size: 15px;
+    }
+
+    .status {
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .icons {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      padding-right: 8px;
+      color: var(--white);
+      font-size: 20px;
+    }
+
+    .keys {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-top: 18px;
+    }
+
+    .key {
+      height: 38px;
+      border: 0;
+      border-radius: 999px;
+      background: #303640;
+      color: #f8fafc;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      color: #c8d0da;
+      font-size: 13px;
+    }
+
+    .toolbar button {
+      height: 30px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: 6px;
+      background: #2a3038;
+      color: #fff;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <main class="bench">
+    <section class="device" aria-label="M5Core simulator">
+      <div class="screen" id="screen"></div>
+      <div class="keys">
+        <button class="key" data-key="A">A</button>
+        <button class="key" data-key="B">B</button>
+        <button class="key" data-key="C">C</button>
+      </div>
+    </section>
+    <div class="toolbar">
+      <button id="openSettings">打开设置</button>
+      <button id="reset">回到主屏</button>
+      <span>A/C 移动，B 确认；键盘方向键和 Enter 也可用。</span>
+    </div>
+  </main>
+
+  <script>
+    const state = {
+      view: "main",
+      focus: 0,
+      profileEdit: false,
+      profileEditReturn: false,
+      profileBeforeEdit: 0,
+      activeProfile: 0,
+      detailProfile: 0,
+      powerSave: false,
+      theme: "dark",
+      pendingTheme: "dark",
+      rotation: 0,
+      status: "FMO已连接",
+      synced: false,
+      callsign: "BH1JSS",
+      profiles: [
+        { name: "配置1", ssid: "YOUR_WIFI_SSID", password: "YOUR_WIFI_PASSWORD", host: "192.168.31.146", ddns: false },
+        { name: "配置2", ssid: "", password: "", host: "", ddns: false },
+        { name: "配置3", ssid: "", password: "", host: "", ddns: false },
+        { name: "配置4", ssid: "", password: "", host: "", ddns: false },
+        { name: "配置5", ssid: "", password: "", host: "", ddns: false },
+      ],
+    };
+
+    const screen = document.querySelector("#screen");
+
+    function activeProfileText() {
+      if (state.profileEdit && state.profileEditReturn) {
+        return "返回";
+      }
+
+      const profile = state.profiles[state.activeProfile];
+      return `${state.activeProfile + 1}/5 ${profile.name}`;
+    }
+
+    function settingsRows() {
+      const profile = state.profiles[state.activeProfile];
+      return [
+        ["选择配置", activeProfileText(), () => {
+          if (!state.profileEdit) {
+            state.profileBeforeEdit = state.activeProfile;
+            state.profileEditReturn = false;
+            state.profileEdit = true;
+          } else {
+            if (state.profileEditReturn) {
+              state.activeProfile = state.profileBeforeEdit;
+              state.status = "返回设置";
+            } else {
+              state.status = "配置已选择";
+            }
+            state.profileEdit = false;
+            state.profileEditReturn = false;
+          }
+          if (state.profileEdit) state.status = "A/C选择配置";
+          render();
+        }],
+        ["网络配置", profile.ssid && profile.host ? "已配置" : "未设置", () => {
+          state.detailProfile = state.activeProfile;
+          setView("profileDetail");
+        }],
+        ["呼号设置", state.callsign, () => setStatus("呼号设置")],
+        ["音量", "60%", () => setStatus("音量页预览")],
+        ["背光", "30%", () => setStatus("背光页预览")],
+        ["屏幕旋转", rotationText(), () => toggleRotation()],
+        ["主题", state.theme === "light" ? "浅色" : "深色", () => toggleTheme()],
+        ["低亮省电", state.powerSave ? "开" : "关", () => togglePowerSave()],
+      ];
+    }
+
+    function rotationText() {
+      return state.rotation === 180 ? "180°" : "正常";
+    }
+
+    function profileRows() {
+      const profile = state.profiles[state.detailProfile];
+      return [
+        ["WiFi配置", profile.ssid || "未设置", () => {
+          setView("wifi");
+        }],
+        ["FMO地址", profile.host || "未设置", () => {
+          profile.host = profile.host || (profile.ddns ? "fmo.example.com:8080" : "192.168.31.146");
+          state.status = "FMO地址已填写";
+          render();
+        }],
+        ["DDNS远程", profile.ddns ? "开" : "关", () => {
+          profile.ddns = !profile.ddns;
+          state.status = profile.ddns ? "DDNS远程连接" : "局域网连接";
+          render();
+        }],
+        ["QSQ/服务器", state.synced ? "同步" : "未同步", () => {
+          state.synced = true;
+          setStatus("正在同步当前FMO");
+        }],
+        ["保存配置", profile.ssid && profile.host ? "已保存" : "未保存", () => {
+          setStatus(profile.ssid && profile.host ? "配置已保存" : "配置未完整");
+        }],
+        ["启用配置", state.detailProfile === state.activeProfile && profile.ssid && profile.host ? "已启用" : "未启用", () => chooseProfile(state.detailProfile)],
+      ];
+    }
+
+    function setView(view) {
+      state.view = view;
+      state.focus = 0;
+      state.profileEdit = false;
+      state.profileEditReturn = false;
+      render();
+    }
+
+    function setStatus(text) {
+      state.status = text;
+      render();
+    }
+
+    function togglePowerSave() {
+      state.powerSave = !state.powerSave;
+      state.status = state.powerSave ? "省电模式" : "退出省电";
+      if (state.powerSave) {
+        state.view = "powerSave";
+      }
+      render();
+    }
+
+    function toggleTheme() {
+      state.pendingTheme = state.pendingTheme === "light" ? "dark" : "light";
+      state.status = "主题已保存重启生效";
+      render();
+    }
+
+    function toggleRotation() {
+      state.rotation = state.rotation === 180 ? 0 : 180;
+      state.status = "旋转重启生效";
+      render();
+    }
+
+    function renderMain() {
+      document.body.classList.toggle("light", state.theme === "light");
+      screen.innerHTML = `
+        <div class="main">
+          <div class="datetime">2026-06-09 21:00</div>
+          <div class="call">${state.callsign}</div>
+          <div class="station">
+            <div class="station-name">当前中继 北京-测试</div>
+          </div>
+          <div class="bottom">
+            <div style="color:${state.powerSave ? "var(--orange)" : "var(--gray)"};text-align:center;font-size:20px">◐</div>
+            <div class="status">${state.status}</div>
+            <div class="icons"><span>♪</span><span>⚙</span></div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderPowerSave() {
+      document.body.classList.toggle("light", state.theme === "light");
+      screen.innerHTML = `
+        <div class="main">
+          <div class="call" style="top:54px;font-size:54px;color:var(--orange)">${state.callsign}</div>
+          <div style="position:absolute;left:0;right:0;bottom:46px;text-align:center;font-size:34px;color:var(--white);font-weight:800">--:--</div>
+          <div class="bottom">
+            <div style="color:var(--orange);text-align:center;font-size:20px">◐</div>
+            <div class="status">省电模式</div>
+            <div style="color:var(--gray);text-align:center;font-size:18px">⚙</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderSettings() {
+      document.body.classList.toggle("light", state.theme === "light");
+      const rows = settingsRows();
+      screen.innerHTML = `
+        <div class="topbar">
+          <div class="back">‹</div>
+          <div style="text-align:center">设置</div>
+          <div class="version">v2.0.0</div>
+        </div>
+        <div class="settings-body">
+          ${rows.map((row, index) => `
+            <div class="row ${index === state.focus ? "focused" : ""}
+              ${index === 0 && state.profileEdit ? "selected" : ""}" data-index="${index}">
+              <div>${row[0]}</div>
+              <div class="value">${index === 0 && state.profileEdit ? "‹ " : ""}${row[1]}${index === 0 && state.profileEdit ? " ›" : ""}</div>
+            </div>
+          `).join("")}
+          <div class="actions">
+            <button class="action ${state.focus === rows.length ? "focused" : ""}">返回</button>
+            <button class="action primary ${state.focus === rows.length + 1 ? "focused" : ""}">保存重启</button>
+          </div>
+        </div>
+      `;
+
+      screen.querySelectorAll(".row").forEach((row) => {
+        row.addEventListener("click", () => {
+          state.focus = Number(row.dataset.index);
+          rows[state.focus][2]();
+        });
+      });
+
+      const focused = screen.querySelector(".row.focused");
+      if (focused) {
+        focused.scrollIntoView({ block: "nearest" });
+      }
+    }
+
+    function renderProfiles() {
+      const backIndex = state.profiles.length;
+      screen.innerHTML = `
+        <div class="topbar">
+          <div class="back">‹</div>
+          <div style="text-align:center">设置</div>
+          <div class="version">v2.0.0</div>
+        </div>
+        <div class="subpage">
+          <div class="title">连接配置</div>
+          ${state.profiles.map((profile, index) => `
+            <div class="profile-row ${index === state.activeProfile ? "active" : ""}
+              ${index === state.focus ? "selected" : ""}" data-index="${index}">
+              ${index === state.activeProfile ? "*" : "&nbsp;"}${index + 1}
+              ${profile.name} ${profile.ssid && profile.host ? "已配置" : "未设置"}
+            </div>
+          `).join("")}
+          <button class="action profile-back ${state.focus === backIndex ? "selected" : ""}">返回</button>
+        </div>
+      `;
+
+      screen.querySelectorAll(".profile-row").forEach((row) => {
+        row.addEventListener("click", () => {
+          state.detailProfile = Number(row.dataset.index);
+          setView("profileDetail");
+        });
+      });
+
+      screen.querySelector(".profile-back").addEventListener("click", () => {
+        setView("settings");
+      });
+    }
+
+    function renderProfileDetail() {
+      const detailIndex = state.detailProfile;
+      const profile = state.profiles[detailIndex];
+      const rows = profileRows();
+      screen.innerHTML = `
+        <div class="topbar">
+          <div class="back">‹</div>
+          <div style="text-align:center">设置</div>
+          <div class="version">v2.0.0</div>
+        </div>
+        <div class="subpage detail-page">
+          <div class="title">配置${detailIndex + 1}详情</div>
+          ${rows.map((row, index) => `
+            <div class="detail-row ${index === state.focus ? "focused" : ""}" data-index="${index}"
+              style="top:${[23, 46, 69, 92, 115, 138][index]}px">
+              <div>${row[0]}</div>
+              <div class="value">${row[1]}</div>
+            </div>
+          `).join("")}
+          <button class="action" style="position:absolute;left:6%;right:6%;bottom:4px;width:88%">返回</button>
+        </div>
+      `;
+
+      screen.querySelectorAll(".detail-row").forEach((row) => {
+        row.addEventListener("click", () => {
+          state.focus = Number(row.dataset.index);
+          rows[state.focus][2]();
+        });
+      });
+    }
+
+    function renderFmo() {
+      const profile = state.profiles[state.activeProfile];
+      screen.innerHTML = `
+        <div class="topbar">
+          <div class="back">‹</div>
+          <div style="text-align:center">设置</div>
+          <div class="version">v2.0.0</div>
+        </div>
+        <div class="subpage">
+          <div class="title">FMO地址 配置${state.activeProfile + 1}</div>
+          <div class="input">${profile.host || "Host[:Port]"}</div>
+          <div class="hint">填写Host[:Port] 自动生成WS</div>
+          <div class="actions" style="margin-top:16px">
+            <button class="action">返回</button>
+            <button class="action primary">保存</button>
+          </div>
+          <button class="action" style="position:absolute;left:6%;right:6%;bottom:34px;width:88%;color:var(--orange)">重启生效</button>
+        </div>
+      `;
+    }
+
+    function renderWifi() {
+      const profile = state.profiles[state.detailProfile];
+      screen.innerHTML = `
+        <div class="topbar">
+          <div class="back">‹</div>
+          <div style="text-align:center">设置</div>
+          <div class="version">v2.0.0</div>
+        </div>
+        <div class="subpage">
+          <div class="title">WiFi设置 配置${state.detailProfile + 1}</div>
+          <div class="input" style="height:30px">${profile.ssid || "SSID"}</div>
+          <div class="input" style="height:30px">${profile.ssid ? "••••••••" : "密码"}</div>
+          <button class="action focused" style="display:block;width:88%;margin:8px auto;color:var(--orange)">扫描</button>
+          <div class="actions" style="margin-top:14px">
+            <button class="action">返回</button>
+            <button class="action primary">保存</button>
+          </div>
+          <div class="hint">保存后重启生效</div>
+        </div>
+      `;
+    }
+
+    function render() {
+      document.body.classList.toggle("light", state.theme === "light");
+      screen.classList.toggle("power-save", false);
+
+      if (state.view === "main") renderMain();
+      if (state.view === "powerSave") renderPowerSave();
+      if (state.view === "settings") renderSettings();
+      if (state.view === "profiles") renderProfiles();
+      if (state.view === "profileDetail") renderProfileDetail();
+      if (state.view === "fmo") renderFmo();
+      if (state.view === "wifi") renderWifi();
+
+      const focused = screen.querySelector(".focused");
+      if (focused) {
+        if (state.view !== "profiles") {
+          focused.scrollIntoView({ block: "nearest" });
+        }
+      }
+    }
+
+    function chooseProfile(index) {
+      const profile = state.profiles[index];
+      if (!profile.ssid || !profile.host) {
+        state.status = "配置槽待设置";
+      } else {
+        state.activeProfile = index;
+        state.status = "连接配置已切换";
+        state.view = "settings";
+      }
+      state.focus = 0;
+      render();
+    }
+
+    function press(key) {
+      if (state.view === "main") {
+        if (key === "B" || key === "C") setView("settings");
+        return;
+      }
+
+      if (state.view === "powerSave") {
+        if (key === "B") {
+          state.powerSave = false;
+          state.view = "main";
+          state.status = "退出省电";
+          render();
+        }
+        return;
+      }
+
+      if (state.view === "settings") {
+        const rows = settingsRows();
+        const total = rows.length + 2;
+        if (state.profileEdit) {
+          if (key === "A") {
+            if (state.profileEditReturn) {
+              state.profileEditReturn = false;
+              state.activeProfile = state.profiles.length - 1;
+            } else if (state.activeProfile === 0) {
+              state.profileEditReturn = true;
+            } else {
+              state.activeProfile -= 1;
+            }
+          }
+          if (key === "C") {
+            if (state.profileEditReturn) {
+              state.profileEditReturn = false;
+              state.activeProfile = 0;
+            } else if (state.activeProfile === state.profiles.length - 1) {
+              state.profileEditReturn = true;
+            } else {
+              state.activeProfile += 1;
+            }
+          }
+          if (key === "B") {
+            if (state.profileEditReturn) {
+              state.activeProfile = state.profileBeforeEdit;
+              state.status = "返回设置";
+            } else {
+              state.status = "配置已选择";
+            }
+            state.profileEdit = false;
+            state.profileEditReturn = false;
+          }
+          render();
+          return;
+        }
+        if (key === "A") state.focus = Math.max(0, state.focus - 1);
+        if (key === "C") state.focus = Math.min(total - 1, state.focus + 1);
+        if (key === "B") {
+          if (state.focus < rows.length) {
+            rows[state.focus][2]();
+          } else if (state.focus === rows.length) {
+            setView("main");
+          } else {
+            setStatus("保存重启");
+          }
+        }
+        render();
+        return;
+      }
+
+      if (state.view === "profiles") {
+        const backIndex = state.profiles.length;
+        if (key === "A") state.focus = state.focus === 0 ? backIndex : state.focus - 1;
+        if (key === "C") state.focus = state.focus === backIndex ? 0 : state.focus + 1;
+        if (key === "B") {
+          if (state.focus === backIndex) {
+            setView("settings");
+          } else {
+            state.detailProfile = state.focus;
+            setView("profileDetail");
+          }
+        }
+        render();
+        return;
+      }
+
+      if (state.view === "profileDetail") {
+        const rows = profileRows();
+        if (key === "A") state.focus = Math.max(0, state.focus - 1);
+        if (key === "C") state.focus = Math.min(rows.length - 1, state.focus + 1);
+        if (key === "B") rows[state.focus][2]();
+        render();
+        return;
+      }
+
+      if (state.view === "wifi") {
+        if (key === "B") setStatus("扫描WiFi");
+        if (key === "A") setView("profileDetail");
+        return;
+      }
+
+      if (key === "A" || key === "B") setView("settings");
+    }
+
+    document.querySelectorAll(".key").forEach((button) => {
+      button.addEventListener("click", () => press(button.dataset.key));
+    });
+
+    document.querySelector("#openSettings").addEventListener("click", () => setView("settings"));
+    document.querySelector("#reset").addEventListener("click", () => setView("main"));
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowUp" || event.key === "ArrowLeft") press("A");
+      if (event.key === "ArrowDown" || event.key === "ArrowRight") press("C");
+      if (event.key === "Enter") press("B");
+      if (event.key === "Escape") setView("main");
+    });
+
+    render();
+  </script>
+</body>
+</html>

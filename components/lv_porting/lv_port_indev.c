@@ -217,6 +217,12 @@ void lv_port_indev_init(void)
  *   STATIC FUNCTIONS
  **********************/
 
+__attribute__((weak)) bool lv_port_m5_key_intercept(uint32_t raw_key)
+{
+    (void)raw_key;
+    return false;
+}
+
 /*------------------
  * Touchpad
  * -----------------*/
@@ -332,11 +338,29 @@ static void keypad_init(void)
 static void keypad_read(lv_indev_drv_t * indev_drv, lv_indev_data_t * data)
 {
     static uint32_t last_key = 0;
+    static uint32_t last_raw_key = 0;
+    static bool raw_intercept_active = false;
 
     /*Get whether the a key is pressed and save the pressed key*/
     uint32_t act_key = keypad_get_key();
 
     if(act_key != 0) {
+        if (raw_intercept_active) {
+            last_raw_key = act_key;
+            data->state = LV_INDEV_STATE_REL;
+            data->key = last_key;
+            return;
+        }
+
+        if (last_raw_key == 0 && lv_port_m5_key_intercept(act_key)) {
+            last_raw_key = act_key;
+            raw_intercept_active = true;
+            data->state = LV_INDEV_STATE_REL;
+            data->key = last_key;
+            return;
+        }
+
+        last_raw_key = act_key;
         data->state = LV_INDEV_STATE_PR;
         bool keyboard_focused = keypad_is_keyboard_focused();
         bool slider_editing = keypad_is_slider_editing();
@@ -367,6 +391,8 @@ static void keypad_read(lv_indev_drv_t * indev_drv, lv_indev_data_t * data)
         last_key = act_key;
     }
     else {
+        last_raw_key = 0;
+        raw_intercept_active = false;
         data->state = LV_INDEV_STATE_REL;
     }
 

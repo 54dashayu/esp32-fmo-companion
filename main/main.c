@@ -182,10 +182,10 @@ void app_main(void)
 
     if (cfg) {
         ESP_LOGI(TAG,
-                 "config: backlight=%u, volume=%u, rotate180=%d",
+                 "config: backlight=%u, volume=%u, rotation=%u",
                  cfg->backlight_percent,
                  cfg->audio_volume,
-                 cfg->screen_rotate_180 ? 1 : 0);
+                 cfg->screen_rotation);
     } else {
         ESP_LOGW(TAG, "app_settings_get returned NULL");
     }
@@ -204,7 +204,10 @@ void app_main(void)
      * 5. 应用屏幕旋转配置。
      * 需要在 lv_port_disp_init() 前设置。
      */
-    lv_port_disp_set_rotate_180(cfg && cfg->screen_rotate_180);
+    lv_port_disp_set_rotation(
+        (cfg && cfg->screen_rotation == APP_SCREEN_ROTATION_180) ?
+            APP_SCREEN_ROTATION_180 : APP_SCREEN_ROTATION_0
+    );
 
     /*
      * 6. 初始化显示。

@@ -40,7 +40,6 @@
 #include "esp_wifi.h"
 
 /* Project headers ---------------------------------------------------------- */
-#include "app_power_save.h"
 #include "app_settings.h"
 #include "audio_ws.h"
 #include "ui_async.h"
@@ -242,11 +241,8 @@ static void wifi_event_handler(void *arg,
 
         s_wifi_started = true;
 
-        /*
-         * 如果正在省电停止 WiFi，不要连接。
-         */
-        if (s_wifi_stopping || app_power_save_is_active()) {
-            ESP_LOGW(TAG, "wifi start ignored because power save/stopping");
+        if (s_wifi_stopping) {
+            ESP_LOGW(TAG, "wifi start ignored because stopping");
             return;
         }
 
@@ -270,14 +266,11 @@ static void wifi_event_handler(void *arg,
 
         s_wifi_connected = false;
         s_wifi_rssi = 0;
+        ui_async_update_wifi_rssi(-127);
 
-        /*
-         * 如果是省电模式主动关闭 WiFi，不自动重连。
-         */
-        if (s_wifi_stopping || app_power_save_is_active()) {
-            ESP_LOGW(TAG, "WiFi disconnected by power save, no reconnect");
+        if (s_wifi_stopping) {
+            ESP_LOGW(TAG, "WiFi disconnected by stop request, no reconnect");
 
-            ui_async_update_wifi_rssi(-127);
             ui_async_update_status("WiFi已关闭");
             return;
         }
@@ -334,15 +327,17 @@ static void wifi_event_handler(void *arg,
         s_wifi_stopping = false;
         s_retry_num = 0;
 
+        wifi_ap_record_t ap_info;
+        if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+            s_wifi_rssi = ap_info.rssi;
+            ui_async_update_wifi_rssi(s_wifi_rssi);
+        } else {
+            ui_async_update_wifi_rssi(-55);
+        }
+
         ui_async_update_status("WiFi已连接");
 
-        /*
-         * 正常模式下，WiFi 获取 IP 后启动/恢复 WebSocket。
-         * audio_ws_start() 内部应具备防重复启动逻辑。
-         */
-        if (!app_power_save_is_active()) {
-            audio_ws_start();
-        }
+        audio_ws_start();
 
         return;
     }
@@ -682,7 +677,7 @@ esp_err_t wifi_manager_scan(wifi_scan_item_t *items,
 
     *out_count = 0;
 
-    if (!s_wifi_inited || !s_wifi_started || app_power_save_is_active()) {
+    if (!s_wifi_inited || !s_wifi_started) {
         ESP_LOGW(TAG, "wifi not available, cannot scan");
         return ESP_ERR_INVALID_STATE;
     }

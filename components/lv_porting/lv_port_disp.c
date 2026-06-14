@@ -27,11 +27,15 @@
     #define MY_DISP_VER_RES    LV_VER_RES_MAX
 #endif
 
-static bool s_lv_port_disp_rotate_180 = false;
+static uint16_t s_lv_port_disp_rotation = 0;
 
-void lv_port_disp_set_rotate_180(bool enable)
+void lv_port_disp_set_rotation(uint16_t rotation)
 {
-    s_lv_port_disp_rotate_180 = enable;
+    if (rotation == 90 || rotation == 180 || rotation == 270) {
+        s_lv_port_disp_rotation = rotation;
+    } else {
+        s_lv_port_disp_rotation = 0;
+    }
 }
 
 /**********************
@@ -123,17 +127,28 @@ void lv_port_disp_init(void)
     disp_drv.ver_res = MY_DISP_VER_RES;
 
     /*
-    * 180° 旋转。
+    * 屏幕旋转。
     *
     * 这里使用 LVGL 软件旋转。
-    * 180° 不交换宽高，所以 hor_res/ver_res 不变。
-    *
     * 注意：
-    * lv_port_disp_set_rotate_180() 必须在 lv_port_disp_init() 之前调用。
+    * lv_port_disp_set_rotation() 必须在 lv_port_disp_init() 之前调用。
     */
     #if LVGL_VERSION_MAJOR >= 8
     disp_drv.sw_rotate = 1;
-    disp_drv.rotated = s_lv_port_disp_rotate_180 ? LV_DISP_ROT_180 : LV_DISP_ROT_NONE;
+    switch (s_lv_port_disp_rotation) {
+    case 90:
+        disp_drv.rotated = LV_DISP_ROT_90;
+        break;
+    case 180:
+        disp_drv.rotated = LV_DISP_ROT_180;
+        break;
+    case 270:
+        disp_drv.rotated = LV_DISP_ROT_270;
+        break;
+    default:
+        disp_drv.rotated = LV_DISP_ROT_NONE;
+        break;
+    }
     #endif
 
     /*Used to copy the buffer's content to the display*/

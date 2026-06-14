@@ -50,7 +50,29 @@ extern "C" {
  * 修改 app_settings_t 的字段布局、字段大小或字段含义后，
  * 应提升该版本号，避免旧 NVS blob 被错误解释。
  */
-#define APP_SETTINGS_VERSION  9
+#define APP_SETTINGS_VERSION  13
+
+#define APP_CONNECTION_PROFILE_MAX 5
+#define APP_PROFILE_NAME_MAX       16
+#define APP_FMO_HOST_MAX           96
+
+#define APP_SCREEN_ROTATION_0      0
+#define APP_SCREEN_ROTATION_90     90
+#define APP_SCREEN_ROTATION_180    180
+#define APP_SCREEN_ROTATION_270    270
+
+typedef enum {
+    APP_UI_THEME_DARK = 0,
+    APP_UI_THEME_LIGHT = 1,
+} app_ui_theme_t;
+
+typedef struct {
+    char name[APP_PROFILE_NAME_MAX];
+    char wifi_ssid[33];
+    char wifi_password[64];
+    char fmo_host[APP_FMO_HOST_MAX];
+    bool ddns_remote_enabled;
+} app_connection_profile_t;
 
 /* -------------------------------------------------------------------------- */
 /* Public types                                                               */
@@ -125,7 +147,10 @@ typedef struct {
      * ws_station_url = ws://<fmo_host>/ws
      * @endcode
      */
-    char fmo_host[64];
+    char fmo_host[APP_FMO_HOST_MAX];
+
+    app_connection_profile_t connection_profiles[APP_CONNECTION_PROFILE_MAX];
+    uint8_t active_profile_index;
 
     /**
      * @brief 音频 WebSocket URL。
@@ -194,8 +219,24 @@ typedef struct {
 
     /**
      * @brief 屏幕是否旋转 180 度。
+     *
+     * @deprecated 仅用于从旧配置迁移到 screen_rotation。
      */
     bool screen_rotate_180;
+
+    /**
+     * @brief 屏幕旋转方向。
+     *
+     * 取值：0、90、180、270。
+     */
+    uint16_t screen_rotation;
+
+    /**
+     * @brief 屏幕配色主题。
+     *
+     * @see app_ui_theme_t
+     */
+    uint8_t ui_theme;
 
 } app_settings_t;
 
@@ -269,6 +310,14 @@ void app_settings_load_defaults(app_settings_t *cfg);
  * @param cfg 配置指针，不能为空。
  */
 void app_settings_build_ws_urls(app_settings_t *cfg);
+
+const app_connection_profile_t *app_settings_get_active_profile(void);
+esp_err_t app_settings_set_active_profile(uint8_t index);
+esp_err_t app_settings_set_profile_wifi(uint8_t index,
+                                        const char *ssid,
+                                        const char *password);
+esp_err_t app_settings_set_profile_fmo_host(uint8_t index, const char *host);
+esp_err_t app_settings_set_profile_ddns_remote(uint8_t index, bool enabled);
 
 /* -------------------------------------------------------------------------- */
 /* Setters                                                                    */
@@ -377,7 +426,9 @@ esp_err_t app_settings_set_qso_state(uint32_t count,
  *
  * @return ESP_OK 或错误码。
  */
-esp_err_t app_settings_set_screen_rotate_180(bool enabled);
+esp_err_t app_settings_set_screen_rotation(uint16_t rotation);
+
+esp_err_t app_settings_set_ui_theme(uint8_t theme);
 
 #ifdef __cplusplus
 }

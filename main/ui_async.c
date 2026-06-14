@@ -58,7 +58,6 @@ static const char *TAG = "ui_async";
  * 超出长度的文本会被截断。
  */
 #define UI_ASYNC_TEXT_MAX_LEN    96
-
 /*
  * UI 上显示的 QSO 数量上限。
  * 这里限制主要是为了避免异常值导致显示异常。
@@ -86,6 +85,7 @@ typedef enum {
     UI_ASYNC_WAKE_FROM_IDLE,          /*!< 从普通待机状态唤醒 */
     UI_ASYNC_ENTER_POWER_SAVE_CLOCK,  /*!< 进入省电时钟页 */
     UI_ASYNC_EXIT_POWER_SAVE_CLOCK,   /*!< 退出省电时钟页 */
+    UI_ASYNC_POWER_SAVE_VISUAL,       /*!< 设置省电视觉暗化层 */
     UI_ASYNC_UPDATE_QSO_COUNT,        /*!< 更新 QSO 数量 */
     UI_ASYNC_QSO_SYNC_POPUP_SHOW,     /*!< 显示 QSO 同步弹窗 */
     UI_ASYNC_QSO_SYNC_POPUP_CLOSE,    /*!< 关闭 QSO 同步弹窗 */
@@ -330,6 +330,10 @@ static void ui_async_cb(void *arg)
         app_ui_exit_power_save_clock();
         break;
 
+    case UI_ASYNC_POWER_SAVE_VISUAL:
+        app_ui_set_power_save_visual(msg->value1 ? true : false);
+        break;
+
     case UI_ASYNC_UPDATE_QSO_COUNT:
         app_ui_update_qso_count((uint32_t)msg->value1);
         break;
@@ -458,6 +462,11 @@ void ui_async_enter_power_save_clock(void)
 void ui_async_exit_power_save_clock(void)
 {
     ui_async_post_value(UI_ASYNC_EXIT_POWER_SAVE_CLOCK, 0, 0);
+}
+
+void ui_async_set_power_save_visual(bool enabled)
+{
+    ui_async_post_value(UI_ASYNC_POWER_SAVE_VISUAL, enabled ? 1 : 0, 0);
 }
 
 /* -------------------------------------------------------------------------- */

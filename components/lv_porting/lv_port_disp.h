@@ -45,7 +45,12 @@ void disp_enable_update(void);
  */
 void disp_disable_update(void);
 
-void lv_port_disp_set_rotate_180(bool enable);
+void lv_port_disp_set_rotation(uint16_t rotation);
+
+static inline void lv_port_disp_set_rotate_180(bool enable)
+{
+    lv_port_disp_set_rotation(enable ? 180 : 0);
+}
 
 
 /**********************

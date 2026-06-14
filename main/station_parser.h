@@ -43,6 +43,11 @@ extern "C" {
  */
 #define STATION_NAME_MAX_LEN     64
 
+/**
+ * @brief 站点频率文本最大长度。
+ */
+#define STATION_FREQ_MAX_LEN     24
+
 /* -------------------------------------------------------------------------- */
 /* Public types                                                               */
 /* -------------------------------------------------------------------------- */
@@ -60,6 +65,21 @@ typedef struct {
      * @brief 站点名称。
      */
     char name[STATION_NAME_MAX_LEN];
+
+    /**
+     * @brief 站点通用频率文本。
+     */
+    char frequency[STATION_FREQ_MAX_LEN];
+
+    /**
+     * @brief 站点 RX 频率文本。
+     */
+    char rx_frequency[STATION_FREQ_MAX_LEN];
+
+    /**
+     * @brief 站点 TX 频率文本。
+     */
+    char tx_frequency[STATION_FREQ_MAX_LEN];
 
     /**
      * @brief 当前条目是否有效。
