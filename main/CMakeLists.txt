@@ -3,6 +3,7 @@ idf_component_register(
         "main.c"
         "app_ui.c"
         "app_settings.c"
+        "app_profile_import.c"
         "wifi_manager.c"
         "audio_ws.c"
         "event_parser.c"
@@ -31,9 +32,11 @@ idf_component_register(
         esp_event
         esp_adc
         esp_driver_i2s
+        fatfs
         json
         lvgl
         lv_porting
         lvgl_esp32_drivers
         led_strip
+        sdmmc
 )

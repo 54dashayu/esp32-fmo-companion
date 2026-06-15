@@ -51,6 +51,7 @@
 /* Project headers ---------------------------------------------------------- */
 #include "app_config.h"
 #include "app_power_save.h"
+#include "app_profile_import.h"
 #include "app_settings.h"
 #include "audio_ws.h"
 #include "board_config.h"
@@ -328,10 +329,12 @@ static lv_obj_t *s_settings_wifi_page = NULL;
 static lv_obj_t *s_settings_wifi_scan_page = NULL;
 static lv_obj_t *s_settings_battery_page = NULL;
 static lv_obj_t *s_settings_station_page = NULL;
+static lv_obj_t *s_settings_tf_import_page = NULL;
 static lv_obj_t *s_btn_wifi_scan = NULL;
 
 /* 设置首页当前值显示 */
 static lv_obj_t *s_label_setting_profile_value = NULL;
+static lv_obj_t *s_label_setting_tf_import_value = NULL;
 static lv_obj_t *s_label_setting_network_value = NULL;
 static lv_obj_t *s_label_setting_fmo_value = NULL;
 static lv_obj_t *s_label_setting_callsign_value = NULL;
@@ -344,6 +347,13 @@ static lv_obj_t *s_label_setting_battery_value = NULL;
 static lv_obj_t *s_label_setting_station_value = NULL;
 static lv_obj_t *s_label_setting_power_save_value = NULL;
 static lv_obj_t *s_label_setting_qso_value = NULL;
+static lv_obj_t *s_label_tf_import_status = NULL;
+static bool s_tf_import_read = false;
+static volatile bool s_tf_import_in_progress = false;
+static volatile bool s_tf_import_result_ready = false;
+static esp_err_t s_tf_import_result = ESP_OK;
+static TaskHandle_t s_tf_import_task_handle = NULL;
+static lv_timer_t *s_tf_import_poll_timer = NULL;
 
 static lv_obj_t *s_profile_item_btns[APP_CONNECTION_PROFILE_MAX];
 static lv_obj_t *s_profile_item_labels[APP_CONNECTION_PROFILE_MAX];
@@ -590,12 +600,18 @@ static void settings_ta_number_focus_event_cb(lv_event_t *e);
 
 static void settings_fmo_open_event_cb(lv_event_t *e);
 static void settings_fmo_save_event_cb(lv_event_t *e);
+static void settings_tf_import_open_event_cb(lv_event_t *e);
+static void settings_tf_import_read_event_cb(lv_event_t *e);
+static void settings_tf_import_task(void *arg);
+static void settings_tf_import_poll_timer_cb(lv_timer_t *timer);
 static void settings_profile_open_event_cb(lv_event_t *e);
 static void settings_profile_select_event_cb(lv_event_t *e);
 static void settings_profile_network_event_cb(lv_event_t *e);
 static bool settings_profile_list_is_visible(void);
 static void settings_profile_list_move(int delta);
 static void settings_profile_list_activate(void);
+static void settings_profile_select_apply(void);
+static void settings_profile_sync_home_to_active(void);
 static void settings_profile_page_rebuild(void);
 static void settings_profile_render(void);
 static void settings_profile_detail_show(uint8_t index);
@@ -681,6 +697,7 @@ static void main_station_popup_render(void);
 
 static void create_settings_page(lv_obj_t *parent);
 static void create_settings_home(lv_obj_t *parent);
+static void create_settings_tf_import_page(lv_obj_t *parent);
 static void create_settings_profile_page(lv_obj_t *parent);
 static void create_settings_profile_detail_page(lv_obj_t *parent);
 static void create_settings_fmo_page(lv_obj_t *parent);
@@ -1042,7 +1059,8 @@ static void settings_format_selected_profile(char *buf, size_t buf_size)
     }
 
     const app_settings_t *cfg = app_settings_get();
-    uint8_t index = s_settings_edit_profile_index;
+    uint8_t index = (cfg && !s_settings_profile_select_editing) ?
+        cfg->active_profile_index : s_settings_edit_profile_index;
 
     if (s_settings_profile_select_editing &&
         index == APP_CONNECTION_PROFILE_MAX) {
@@ -1075,7 +1093,8 @@ static void settings_format_selected_profile(char *buf, size_t buf_size)
 static const char *settings_selected_profile_status_text(void)
 {
     const app_settings_t *cfg = app_settings_get();
-    uint8_t index = s_settings_edit_profile_index;
+    uint8_t index = (cfg && !s_settings_profile_select_editing) ?
+        cfg->active_profile_index : s_settings_edit_profile_index;
 
     if (index == APP_CONNECTION_PROFILE_MAX) {
         index = s_settings_profile_select_saved_index;
@@ -1875,6 +1894,13 @@ static void settings_refresh_home_values(void)
         lv_label_set_text(s_label_setting_profile_value, buf);
     }
 
+    if (s_label_setting_tf_import_value) {
+        lv_label_set_text(s_label_setting_tf_import_value,
+                          s_tf_import_in_progress ?
+                              "读取中" :
+                              (s_tf_import_read ? "已读取" : "未读取"));
+    }
+
     if (s_label_setting_network_value) {
         lv_label_set_text(s_label_setting_network_value,
                           settings_selected_profile_status_text());
@@ -2101,6 +2127,10 @@ static void settings_profile_open_event_cb(lv_event_t *e)
         lv_obj_add_flag(s_settings_station_page, LV_OBJ_FLAG_HIDDEN);
     }
 
+    if (s_settings_tf_import_page) {
+        lv_obj_add_flag(s_settings_tf_import_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
     if (s_settings_profile_detail_page) {
         lv_obj_add_flag(s_settings_profile_detail_page, LV_OBJ_FLAG_HIDDEN);
     }
@@ -2159,6 +2189,55 @@ static void settings_profile_list_activate(void)
     app_ui_focus_rebuild_active();
 }
 
+static void settings_profile_select_apply(void)
+{
+    const app_settings_t *cfg = app_settings_get();
+    uint8_t fallback = cfg ? cfg->active_profile_index : 0;
+
+    if (fallback >= APP_CONNECTION_PROFILE_MAX) {
+        fallback = 0;
+    }
+
+    if (s_settings_edit_profile_index == APP_CONNECTION_PROFILE_MAX) {
+        s_settings_edit_profile_index = fallback;
+        app_ui_update_status("返回设置");
+        return;
+    }
+
+    esp_err_t ret = app_settings_set_active_profile(s_settings_edit_profile_index);
+    if (ret == ESP_OK) {
+        s_settings_profile_select_saved_index = s_settings_edit_profile_index;
+        app_ui_update_status("配置已启用");
+        return;
+    }
+
+    s_settings_edit_profile_index = fallback;
+    if (ret == ESP_ERR_INVALID_STATE) {
+        app_ui_update_status("配置槽未设置");
+    } else {
+        app_ui_update_status("切换配置失败");
+    }
+}
+
+static void settings_profile_sync_home_to_active(void)
+{
+    const app_settings_t *cfg = app_settings_get();
+
+    if (!cfg) {
+        s_settings_edit_profile_index = 0;
+        s_settings_profile_select_saved_index = 0;
+        return;
+    }
+
+    uint8_t active = cfg->active_profile_index;
+    if (active >= APP_CONNECTION_PROFILE_MAX) {
+        active = 0;
+    }
+
+    s_settings_edit_profile_index = active;
+    s_settings_profile_select_saved_index = active;
+}
+
 bool lv_port_m5_key_intercept(uint32_t raw_key)
 {
     if (s_settings_profile_select_editing) {
@@ -2198,13 +2277,7 @@ bool lv_port_m5_key_intercept(uint32_t raw_key)
         }
 
         if (raw_key == 5) {
-            if (s_settings_edit_profile_index == APP_CONNECTION_PROFILE_MAX) {
-                s_settings_edit_profile_index =
-                    s_settings_profile_select_saved_index;
-                app_ui_update_status("返回设置");
-            } else {
-                app_ui_update_status("配置已选择");
-            }
+            settings_profile_select_apply();
             s_settings_profile_select_editing = false;
             settings_refresh_home_values();
             app_ui_focus_rebuild_active();
@@ -2241,24 +2314,16 @@ static void settings_profile_select_event_cb(lv_event_t *e)
     LV_UNUSED(e);
 
     const app_settings_t *cfg = app_settings_get();
-    if (s_settings_edit_profile_index >= APP_CONNECTION_PROFILE_MAX) {
-        s_settings_edit_profile_index = cfg ? cfg->active_profile_index : 0;
-    }
-
-    if (s_settings_edit_profile_index >= APP_CONNECTION_PROFILE_MAX) {
-        s_settings_edit_profile_index = 0;
-    }
 
     if (!s_settings_profile_select_editing) {
+        s_settings_edit_profile_index = cfg ? cfg->active_profile_index : 0;
+        if (s_settings_edit_profile_index >= APP_CONNECTION_PROFILE_MAX) {
+            s_settings_edit_profile_index = 0;
+        }
         s_settings_profile_select_saved_index = s_settings_edit_profile_index;
         s_settings_profile_select_editing = true;
     } else {
-        if (s_settings_edit_profile_index == APP_CONNECTION_PROFILE_MAX) {
-            s_settings_edit_profile_index = s_settings_profile_select_saved_index;
-            app_ui_update_status("返回设置");
-        } else {
-            app_ui_update_status("配置已选择");
-        }
+        settings_profile_select_apply();
         s_settings_profile_select_editing = false;
     }
 
@@ -2268,17 +2333,139 @@ static void settings_profile_select_event_cb(lv_event_t *e)
     }
 }
 
+static void settings_tf_import_open_event_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    settings_hide_keyboard();
+    s_settings_profile_select_editing = false;
+
+    if (s_settings_home) {
+        lv_obj_add_flag(s_settings_home, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (s_settings_tf_import_page) {
+        lv_obj_clear_flag(s_settings_tf_import_page, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_settings_tf_import_page);
+    }
+
+    if (s_label_tf_import_status) {
+        lv_label_set_text(s_label_tf_import_status,
+                          s_tf_import_in_progress ?
+                              "读取中" :
+                              (s_tf_import_read ? "已读取" : "未读取"));
+    }
+
+    app_ui_focus_rebuild_active();
+}
+
+static void settings_tf_import_read_event_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    if (s_tf_import_in_progress) {
+        app_ui_update_status("正在读取");
+        return;
+    }
+
+    if (s_label_tf_import_status) {
+        lv_label_set_text(s_label_tf_import_status, "正在读取...");
+    }
+    app_ui_update_status("读取TF卡配置");
+
+    s_tf_import_result = ESP_OK;
+    s_tf_import_result_ready = false;
+    s_tf_import_in_progress = true;
+
+    BaseType_t ret = xTaskCreate(settings_tf_import_task,
+                                 "tf_import_task",
+                                 6144,
+                                 NULL,
+                                 3,
+                                 &s_tf_import_task_handle);
+    if (ret != pdPASS) {
+        s_tf_import_in_progress = false;
+        s_tf_import_task_handle = NULL;
+
+        if (s_label_tf_import_status) {
+            lv_label_set_text(s_label_tf_import_status, "启动失败");
+        }
+
+        app_ui_update_status("读取启动失败");
+        app_ui_focus_rebuild_active();
+        return;
+    }
+
+    if (!s_tf_import_poll_timer) {
+        s_tf_import_poll_timer = lv_timer_create(
+            settings_tf_import_poll_timer_cb,
+            200,
+            NULL
+        );
+    }
+
+    settings_refresh_home_values();
+    app_ui_focus_rebuild_active();
+}
+
+static void settings_tf_import_task(void *arg)
+{
+    LV_UNUSED(arg);
+
+    s_tf_import_result = app_profile_import_from_sdcard();
+    s_tf_import_result_ready = true;
+    s_tf_import_in_progress = false;
+    s_tf_import_task_handle = NULL;
+
+    vTaskDelete(NULL);
+}
+
+static void settings_tf_import_poll_timer_cb(lv_timer_t *timer)
+{
+    LV_UNUSED(timer);
+
+    if (!s_tf_import_result_ready) {
+        return;
+    }
+
+    s_tf_import_result_ready = false;
+
+    if (s_tf_import_result == ESP_OK) {
+        s_tf_import_read = true;
+        if (s_label_tf_import_status) {
+            lv_label_set_text(s_label_tf_import_status, "已读取");
+        }
+        app_ui_update_status("TF配置已读取");
+    } else {
+        s_tf_import_read = false;
+        if (s_label_tf_import_status) {
+            lv_label_set_text(s_label_tf_import_status,
+                              s_tf_import_result == ESP_ERR_NOT_FOUND ?
+                                  "未找到文件" : "读取失败");
+        }
+        app_ui_update_status("TF配置未读取");
+        ESP_LOGW(TAG,
+                 "TF import failed: %s",
+                 esp_err_to_name(s_tf_import_result));
+    }
+
+    settings_refresh_home_values();
+    app_ui_focus_rebuild_active();
+
+    if (s_tf_import_poll_timer) {
+        lv_timer_del(s_tf_import_poll_timer);
+        s_tf_import_poll_timer = NULL;
+    }
+}
+
 static void settings_profile_network_event_cb(lv_event_t *e)
 {
     LV_UNUSED(e);
 
-    if (s_settings_edit_profile_index == APP_CONNECTION_PROFILE_MAX) {
+    if (!s_settings_profile_select_editing) {
+        settings_profile_sync_home_to_active();
+    } else if (s_settings_edit_profile_index == APP_CONNECTION_PROFILE_MAX) {
         s_settings_edit_profile_index = s_settings_profile_select_saved_index;
-    }
-
-    if (s_settings_edit_profile_index >= APP_CONNECTION_PROFILE_MAX) {
-        const app_settings_t *cfg = app_settings_get();
-        s_settings_edit_profile_index = cfg ? cfg->active_profile_index : 0;
     }
 
     if (s_settings_edit_profile_index >= APP_CONNECTION_PROFILE_MAX) {
@@ -3094,6 +3281,7 @@ static void settings_hide_keyboard(void)
 static void settings_show_home(void)
 {
     s_settings_profile_select_editing = false;
+    settings_profile_sync_home_to_active();
 
     settings_slider_edit_set(s_slider_volume, false);
     settings_slider_edit_set(s_slider_backlight, false);
@@ -3150,6 +3338,10 @@ static void settings_show_home(void)
         lv_obj_add_flag(s_settings_station_page, LV_OBJ_FLAG_HIDDEN);
     }
 
+    if (s_settings_tf_import_page) {
+        lv_obj_add_flag(s_settings_tf_import_page, LV_OBJ_FLAG_HIDDEN);
+    }
+
     if (s_settings_wifi_scan_page) {
         lv_obj_add_flag(s_settings_wifi_scan_page, LV_OBJ_FLAG_HIDDEN);
     }
@@ -3180,14 +3372,8 @@ static void settings_open_event_cb(lv_event_t *e)
         return;
     }
 
-    const app_settings_t *cfg = app_settings_get();
-    if (cfg && s_settings_edit_profile_index >= APP_CONNECTION_PROFILE_MAX) {
-        s_settings_edit_profile_index = cfg->active_profile_index;
-    }
-    if (s_settings_edit_profile_index >= APP_CONNECTION_PROFILE_MAX) {
-        s_settings_edit_profile_index = 0;
-    }
     s_settings_profile_select_editing = false;
+    settings_profile_sync_home_to_active();
 
     settings_refresh_home_values();
     settings_show_home();
@@ -3835,7 +4021,7 @@ static lv_obj_t *settings_create_row(lv_obj_t *parent,
 {
     lv_obj_t *btn = lv_btn_create(parent);
     make_clean_obj(btn, UI_COLOR_PANEL, LV_OPA_COVER);
-    lv_obj_set_size(btn, LV_PCT(94), 20);
+    lv_obj_set_size(btn, LV_PCT(94), 16);
     lv_obj_set_style_radius(btn, 4, LV_PART_MAIN);
     lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -3926,7 +4112,7 @@ static lv_obj_t *settings_create_action_button(lv_obj_t *parent,
 {
     lv_obj_t *btn = lv_btn_create(parent);
     make_clean_obj(btn, bg, LV_OPA_COVER);
-    lv_obj_set_size(btn, LV_PCT(42), 30);
+    lv_obj_set_size(btn, LV_PCT(42), 24);
     lv_obj_set_style_radius(btn, 4, LV_PART_MAIN);
     lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -3953,19 +4139,8 @@ static void create_settings_home(lv_obj_t *parent)
     make_clean_obj(s_settings_home, UI_COLOR_BG, LV_OPA_COVER);
     lv_obj_set_size(s_settings_home, LV_PCT(100), 198);
     lv_obj_align(s_settings_home, LV_ALIGN_BOTTOM_MID, 0, 0);
-
-    lv_obj_set_style_pad_top(s_settings_home, 8, LV_PART_MAIN);
-    lv_obj_set_style_pad_left(s_settings_home, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_right(s_settings_home, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_bottom(s_settings_home, 4, LV_PART_MAIN);
-
-    lv_obj_set_flex_flow(s_settings_home, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(s_settings_home,
-                          LV_FLEX_ALIGN_START,
-                          LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-
-    lv_obj_set_scroll_dir(s_settings_home, LV_DIR_VER);
+    lv_obj_clear_flag(s_settings_home, LV_OBJ_FLAG_SCROLLABLE);
+    app_ui_disable_auto_scroll(s_settings_home);
     lv_obj_set_scrollbar_mode(s_settings_home, LV_SCROLLBAR_MODE_OFF);
 
     const app_settings_t *cfg = app_settings_get();
@@ -3981,22 +4156,46 @@ static void create_settings_home(lv_obj_t *parent)
     char profile_buf[32];
     settings_format_selected_profile(profile_buf, sizeof(profile_buf));
 
+    lv_obj_t *row_area = lv_obj_create(s_settings_home);
+    make_clean_obj(row_area, UI_COLOR_BG, LV_OPA_COVER);
+    lv_obj_set_size(row_area, LV_PCT(100), 156);
+    lv_obj_align(row_area, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_pad_top(row_area, 2, LV_PART_MAIN);
+    lv_obj_set_style_pad_left(row_area, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_right(row_area, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_bottom(row_area, 2, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(row_area, 1, LV_PART_MAIN);
+    lv_obj_set_flex_flow(row_area, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(row_area,
+                          LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_scroll_dir(row_area, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(row_area, LV_SCROLLBAR_MODE_OFF);
+
+    s_label_setting_tf_import_value = settings_create_row(
+        row_area,
+        "TF卡配置文件",
+        s_tf_import_read ? "已读取" : "未读取",
+        settings_tf_import_read_event_cb
+    );
+
     s_label_setting_profile_value = settings_create_row(
-        s_settings_home,
+        row_area,
         "选择配置",
         profile_buf,
         settings_profile_select_event_cb
     );
 
     s_label_setting_network_value = settings_create_row(
-        s_settings_home,
+        row_area,
         "网络配置",
         settings_selected_profile_status_text(),
         settings_profile_network_event_cb
     );
 
     s_label_setting_callsign_value = settings_create_row(
-        s_settings_home,
+        row_area,
         "呼号设置",
         (cfg && cfg->owner_callsign[0]) ?
             cfg->owner_callsign : APP_DEFAULT_OWNER_CALLSIGN,
@@ -4007,7 +4206,7 @@ static void create_settings_home(lv_obj_t *parent)
     snprintf(vol_buf, sizeof(vol_buf), "%u%%", cfg ? cfg->audio_volume : 0);
 
     s_label_setting_volume_value = settings_create_row(
-        s_settings_home,
+        row_area,
         "音量",
         vol_buf,
         settings_volume_open_event_cb
@@ -4017,28 +4216,28 @@ static void create_settings_home(lv_obj_t *parent)
     snprintf(bl_buf, sizeof(bl_buf), "%u%%", cfg ? cfg->backlight_percent : 80);
 
     s_label_setting_backlight_value = settings_create_row(
-        s_settings_home,
+        row_area,
         "背光",
         bl_buf,
         settings_backlight_open_event_cb
     );
 
     s_label_setting_rotate_value = settings_create_row(
-        s_settings_home,
+        row_area,
         "屏幕旋转",
         settings_rotation_text(cfg ? cfg->screen_rotation : APP_SCREEN_ROTATION_0),
         settings_rotate_toggle_event_cb
     );
 
     s_label_setting_theme_value = settings_create_row(
-        s_settings_home,
+        row_area,
         "主题",
         settings_applied_theme_text(),
         settings_theme_toggle_event_cb
     );
 
     s_label_setting_power_save_value = settings_create_row(
-        s_settings_home,
+        row_area,
         "低亮省电",
         app_power_save_is_manual_enabled() ? "开" : "关",
         settings_power_save_toggle_event_cb
@@ -4051,7 +4250,9 @@ static void create_settings_home(lv_obj_t *parent)
      */
     lv_obj_t *bottom_row = lv_obj_create(s_settings_home);
     make_clean_obj(bottom_row, UI_COLOR_BG, LV_OPA_COVER);
-    lv_obj_set_size(bottom_row, LV_PCT(94), 34);
+    lv_obj_set_size(bottom_row, LV_PCT(94), 28);
+    lv_obj_align(bottom_row, LV_ALIGN_BOTTOM_MID, 0, -3);
+    lv_obj_clear_flag(bottom_row, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_flex_flow(bottom_row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(bottom_row,
                           LV_FLEX_ALIGN_SPACE_BETWEEN,
@@ -4069,6 +4270,62 @@ static void create_settings_home(lv_obj_t *parent)
                                   UI_COLOR_ORANGE,
                                   UI_COLOR_ON_ACCENT,
                                   settings_restart_event_cb);
+}
+
+static void create_settings_tf_import_page(lv_obj_t *parent)
+{
+    s_settings_tf_import_page = lv_obj_create(parent);
+    make_clean_obj(s_settings_tf_import_page, UI_COLOR_BG, LV_OPA_COVER);
+    lv_obj_set_size(s_settings_tf_import_page, LV_PCT(100), 198);
+    lv_obj_align(s_settings_tf_import_page, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_add_flag(s_settings_tf_import_page, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_pad_all(s_settings_tf_import_page, 8, LV_PART_MAIN);
+    lv_obj_set_scroll_dir(s_settings_tf_import_page, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(s_settings_tf_import_page, LV_SCROLLBAR_MODE_OFF);
+
+    lv_obj_t *title = lv_label_create(s_settings_tf_import_page);
+    lv_label_set_text(title, "TF卡配置文件");
+    label_set_color(title, UI_COLOR_WHITE);
+    label_set_font(title, ui_font_cn());
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
+
+    lv_obj_t *info = lv_label_create(s_settings_tf_import_page);
+    lv_label_set_text(info,
+                      "文件名: fmo_profiles.csv\n"
+                      "位置: TF卡根目录");
+    label_set_color(info, UI_COLOR_GRAY);
+    label_set_font(info, ui_font_cn());
+    lv_obj_set_width(info, 292);
+    lv_label_set_long_mode(info, LV_LABEL_LONG_WRAP);
+    lv_obj_align(info, LV_ALIGN_TOP_LEFT, 6, 30);
+
+    s_label_tf_import_status = lv_label_create(s_settings_tf_import_page);
+    lv_label_set_text(s_label_tf_import_status, "未读取");
+    label_set_color(s_label_tf_import_status, UI_COLOR_ORANGE);
+    label_set_font(s_label_tf_import_status, ui_font_cn());
+    lv_obj_align(s_label_tf_import_status, LV_ALIGN_CENTER, 0, 12);
+
+    lv_obj_t *bottom_row = lv_obj_create(s_settings_tf_import_page);
+    make_clean_obj(bottom_row, UI_COLOR_BG, LV_OPA_TRANSP);
+    lv_obj_set_size(bottom_row, LV_PCT(100), 34);
+    lv_obj_align(bottom_row, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_flex_flow(bottom_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(bottom_row,
+                          LV_FLEX_ALIGN_SPACE_EVENLY,
+                          LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(bottom_row, LV_OBJ_FLAG_SCROLLABLE);
+
+    settings_create_action_button(bottom_row,
+                                  "返回",
+                                  UI_COLOR_PANEL,
+                                  UI_COLOR_WHITE,
+                                  settings_back_home_event_cb);
+    settings_create_action_button(bottom_row,
+                                  "读取",
+                                  UI_COLOR_ORANGE,
+                                  UI_COLOR_ON_ACCENT,
+                                  settings_tf_import_read_event_cb);
 }
 
 /* -------------------------------------------------------------------------- */

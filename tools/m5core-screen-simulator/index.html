@@ -102,7 +102,7 @@
       right: 0;
       bottom: 0;
       height: 198px;
-      padding: 8px 0 4px;
+      padding: 2px 0 34px;
       overflow-y: auto;
       scrollbar-width: none;
       background: var(--bg);
@@ -114,15 +114,15 @@
 
     .row {
       width: 94%;
-      height: 20px;
-      margin: 0 auto 4px;
+      height: 16px;
+      margin: 0 auto 1px;
       padding: 0 8px;
       display: grid;
       grid-template-columns: 88px 1fr;
       align-items: center;
       border-radius: 4px;
       background: var(--panel);
-      font-size: 13px;
+      font-size: 11px;
       cursor: pointer;
       outline: 0 solid transparent;
     }
@@ -130,8 +130,8 @@
     .row.focused,
     .action.focused,
     .profile-row.focused {
-      outline: 3px solid var(--white);
-      box-shadow: 0 0 10px rgba(255, 136, 0, 0.8);
+      outline: 2px solid var(--white);
+      box-shadow: 0 0 6px rgba(255, 136, 0, 0.8);
     }
 
     .value {
@@ -143,17 +143,21 @@
     }
 
     .actions {
-      width: 94%;
-      height: 34px;
-      margin: 0 auto;
+      position: absolute;
+      left: 3%;
+      right: 3%;
+      bottom: 4px;
+      height: 28px;
+      margin: 0;
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 20px;
       align-items: center;
+      background: var(--bg);
     }
 
     .action {
-      height: 30px;
+      height: 24px;
       border: 0;
       border-radius: 4px;
       background: var(--panel);
@@ -263,6 +267,32 @@
       text-align: center;
       font-size: 12px;
       margin-top: 4px;
+    }
+
+    .sd-panel {
+      width: 88%;
+      min-height: 92px;
+      margin: 8px auto;
+      padding: 8px;
+      border-radius: 4px;
+      background: var(--panel);
+      color: var(--white);
+      font-size: 12px;
+      line-height: 1.35;
+      overflow: hidden;
+    }
+
+    .sd-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 5px;
+    }
+
+    .sd-line span:last-child {
+      color: var(--orange);
+      text-align: right;
+      white-space: nowrap;
     }
 
     .main {
@@ -400,6 +430,7 @@
       profileEdit: false,
       profileEditReturn: false,
       profileBeforeEdit: 0,
+      profileDraft: 0,
       activeProfile: 0,
       detailProfile: 0,
       powerSave: false,
@@ -409,6 +440,8 @@
       status: "FMO已连接",
       synced: false,
       callsign: "BH1JSS",
+      sdImportRead: false,
+      sdImportMessage: "未读取",
       profiles: [
         { name: "配置1", ssid: "YOUR_WIFI_SSID", password: "YOUR_WIFI_PASSWORD", host: "192.168.31.146", ddns: false },
         { name: "配置2", ssid: "", password: "", host: "", ddns: false },
@@ -419,30 +452,38 @@
     };
 
     const screen = document.querySelector("#screen");
+    const profileSelectRowIndex = 1;
 
     function activeProfileText() {
       if (state.profileEdit && state.profileEditReturn) {
         return "返回";
       }
 
-      const profile = state.profiles[state.activeProfile];
-      return `${state.activeProfile + 1}/5 ${profile.name}`;
+      const index = state.profileEdit ? state.profileDraft : state.activeProfile;
+      const profile = state.profiles[index];
+      return `${index + 1}/5 ${profile.name}`;
     }
 
     function settingsRows() {
       const profile = state.profiles[state.activeProfile];
       return [
+        ["TF卡配置文件", state.sdImportRead ? "已读取" : "未读取", () => {
+          runSdImportDemo();
+        }],
         ["选择配置", activeProfileText(), () => {
           if (!state.profileEdit) {
             state.profileBeforeEdit = state.activeProfile;
+            state.profileDraft = state.activeProfile;
             state.profileEditReturn = false;
             state.profileEdit = true;
           } else {
             if (state.profileEditReturn) {
-              state.activeProfile = state.profileBeforeEdit;
               state.status = "返回设置";
+            } else if (!state.profiles[state.profileDraft].ssid || !state.profiles[state.profileDraft].host) {
+              state.status = "配置槽待设置";
             } else {
-              state.status = "配置已选择";
+              state.activeProfile = state.profileDraft;
+              state.status = "配置已启用";
             }
             state.profileEdit = false;
             state.profileEditReturn = false;
@@ -465,6 +506,23 @@
 
     function rotationText() {
       return state.rotation === 180 ? "180°" : "正常";
+    }
+
+    function runSdImportDemo() {
+      state.profiles = [
+        { name: "家里", ssid: "HomeWiFi", password: "HomePassword", host: "192.168.31.146", ddns: false },
+        { name: "车上", ssid: "CarWiFi", password: "CarPassword", host: "myfmo.ddns.net:8080", ddns: true },
+        { name: "基地台", ssid: "StationWiFi", password: "StationPassword", host: "10.0.0.20", ddns: false },
+        { name: "配置4", ssid: "", password: "", host: "", ddns: false },
+        { name: "配置5", ssid: "", password: "", host: "", ddns: false },
+      ];
+      state.activeProfile = 0;
+      state.detailProfile = 0;
+      state.callsign = "BH1JSS";
+      state.sdImportRead = true;
+      state.sdImportMessage = "已读取并保存";
+      state.status = "TF配置已读取";
+      render();
     }
 
     function profileRows() {
@@ -568,14 +626,14 @@
         <div class="topbar">
           <div class="back">‹</div>
           <div style="text-align:center">设置</div>
-          <div class="version">v2.0.0</div>
+          <div class="version">v2.0.1</div>
         </div>
         <div class="settings-body">
           ${rows.map((row, index) => `
             <div class="row ${index === state.focus ? "focused" : ""}
-              ${index === 0 && state.profileEdit ? "selected" : ""}" data-index="${index}">
+              ${index === profileSelectRowIndex && state.profileEdit ? "selected" : ""}" data-index="${index}">
               <div>${row[0]}</div>
-              <div class="value">${index === 0 && state.profileEdit ? "‹ " : ""}${row[1]}${index === 0 && state.profileEdit ? " ›" : ""}</div>
+              <div class="value">${index === profileSelectRowIndex && state.profileEdit ? "‹ " : ""}${row[1]}${index === profileSelectRowIndex && state.profileEdit ? " ›" : ""}</div>
             </div>
           `).join("")}
           <div class="actions">
@@ -604,7 +662,7 @@
         <div class="topbar">
           <div class="back">‹</div>
           <div style="text-align:center">设置</div>
-          <div class="version">v2.0.0</div>
+          <div class="version">v2.0.1</div>
         </div>
         <div class="subpage">
           <div class="title">连接配置</div>
@@ -639,7 +697,7 @@
         <div class="topbar">
           <div class="back">‹</div>
           <div style="text-align:center">设置</div>
-          <div class="version">v2.0.0</div>
+          <div class="version">v2.0.1</div>
         </div>
         <div class="subpage detail-page">
           <div class="title">配置${detailIndex + 1}详情</div>
@@ -668,7 +726,7 @@
         <div class="topbar">
           <div class="back">‹</div>
           <div style="text-align:center">设置</div>
-          <div class="version">v2.0.0</div>
+          <div class="version">v2.0.1</div>
         </div>
         <div class="subpage">
           <div class="title">FMO地址 配置${state.activeProfile + 1}</div>
@@ -689,7 +747,7 @@
         <div class="topbar">
           <div class="back">‹</div>
           <div style="text-align:center">设置</div>
-          <div class="version">v2.0.0</div>
+          <div class="version">v2.0.1</div>
         </div>
         <div class="subpage">
           <div class="title">WiFi设置 配置${state.detailProfile + 1}</div>
@@ -705,6 +763,33 @@
       `;
     }
 
+    function renderSdImport() {
+      screen.innerHTML = `
+        <div class="topbar">
+          <div class="back">‹</div>
+          <div style="text-align:center">设置</div>
+          <div class="version">v2.0.1</div>
+        </div>
+        <div class="subpage">
+          <div class="title">TF卡配置文件</div>
+          <div class="sd-panel">
+            <div class="sd-line"><div>文件名</div><span>fmo_profiles.csv</span></div>
+            <div class="sd-line"><div>位置</div><span>TF卡根目录</span></div>
+            <div class="sd-line"><div>当前状态</div><span>${state.sdImportMessage}</span></div>
+            <div class="hint" style="margin-top:8px">读取全局呼号和5组网络配置</div>
+          </div>
+          <div class="actions" style="margin-top:6px">
+            <button class="action ${state.focus === 0 ? "focused" : ""}">返回</button>
+            <button class="action primary ${state.focus === 1 ? "focused" : ""}">读取</button>
+          </div>
+        </div>
+      `;
+
+      const buttons = screen.querySelectorAll(".action");
+      buttons[0].addEventListener("click", () => setView("settings"));
+      buttons[1].addEventListener("click", () => runSdImportDemo());
+    }
+
     function render() {
       document.body.classList.toggle("light", state.theme === "light");
       screen.classList.toggle("power-save", false);
@@ -716,6 +801,7 @@
       if (state.view === "profileDetail") renderProfileDetail();
       if (state.view === "fmo") renderFmo();
       if (state.view === "wifi") renderWifi();
+      if (state.view === "sdImport") renderSdImport();
 
       const focused = screen.querySelector(".focused");
       if (focused) {
@@ -761,29 +847,31 @@
           if (key === "A") {
             if (state.profileEditReturn) {
               state.profileEditReturn = false;
-              state.activeProfile = state.profiles.length - 1;
-            } else if (state.activeProfile === 0) {
+              state.profileDraft = state.profiles.length - 1;
+            } else if (state.profileDraft === 0) {
               state.profileEditReturn = true;
             } else {
-              state.activeProfile -= 1;
+              state.profileDraft -= 1;
             }
           }
           if (key === "C") {
             if (state.profileEditReturn) {
               state.profileEditReturn = false;
-              state.activeProfile = 0;
-            } else if (state.activeProfile === state.profiles.length - 1) {
+              state.profileDraft = 0;
+            } else if (state.profileDraft === state.profiles.length - 1) {
               state.profileEditReturn = true;
             } else {
-              state.activeProfile += 1;
+              state.profileDraft += 1;
             }
           }
           if (key === "B") {
             if (state.profileEditReturn) {
-              state.activeProfile = state.profileBeforeEdit;
               state.status = "返回设置";
+            } else if (!state.profiles[state.profileDraft].ssid || !state.profiles[state.profileDraft].host) {
+              state.status = "配置槽待设置";
             } else {
-              state.status = "配置已选择";
+              state.activeProfile = state.profileDraft;
+              state.status = "配置已启用";
             }
             state.profileEdit = false;
             state.profileEditReturn = false;
@@ -834,6 +922,17 @@
       if (state.view === "wifi") {
         if (key === "B") setStatus("扫描WiFi");
         if (key === "A") setView("profileDetail");
+        return;
+      }
+
+      if (state.view === "sdImport") {
+        if (key === "A") state.focus = Math.max(0, state.focus - 1);
+        if (key === "C") state.focus = Math.min(1, state.focus + 1);
+        if (key === "B") {
+          if (state.focus === 0) setView("settings");
+          if (state.focus === 1) runSdImportDemo();
+        }
+        render();
         return;
       }
 
