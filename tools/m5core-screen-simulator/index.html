@@ -225,7 +225,7 @@
       position: absolute;
       left: 5%;
       width: 90%;
-      height: 20px;
+      height: 24px;
       padding: 0 8px;
       display: grid;
       grid-template-columns: 98px 1fr;
@@ -704,7 +704,7 @@
           <div class="title">配置${detailIndex + 1}详情</div>
           ${rows.map((row, index) => `
             <div class="detail-row ${index === state.focus ? "focused" : ""}" data-index="${index}"
-              style="top:${[23, 46, 69, 92, 115][index]}px">
+              style="top:${[26, 54, 82, 110, 138][index]}px">
               <div>${row[0]}</div>
               <div class="value">${row[1]}</div>
             </div>

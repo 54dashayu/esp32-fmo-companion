@@ -15,12 +15,12 @@ TF 卡建议使用 32GB 以下容量，并格式化为 FAT32。
 ## CSV 格式
 
 ```csv
-呼号,配置号,配置名(英文),WiFi名称,WiFi密码,FMO地址,DDNS远程,启用
-BH1JSS,1,Home,HomeWiFi,HomePassword,192.168.31.146,0,1
-BH1JSS,2,Car,CarWiFi,CarPassword,myfmo.ddns.net:8080,1,0
-BH1JSS,3,Station,StationWiFi,StationPassword,10.0.0.20,0,0
-BH1JSS,4,Backup1,,,,0,0
-BH1JSS,5,Backup2,,,,0,0
+呼号,配置号,配置名(英文不超过4字母),WiFi名称,WiFi密码,FMO地址,DDNS远程,启用
+BH1JSS,1,AAA,HWTD-BH1JSS,22222222,192.168.31.146,0,1
+BH1JSS,2,ddns,HWTD-BH1JSS,11111,sdsdfsdf.sfasfs.dfa:11111,1,0
+BH1JSS,3,C,StationWiFi,StationPassword,10.0.0.20,0,0
+BH1JSS,4,D,,,,0,0
+BH1JSS,5,EEEE,,,,0,0
 ```
 
 仓库内也提供了模板文件：[fmo_profiles.csv](fmo_profiles.csv)。复制到 TF 卡根目录时，保持文件名 `fmo_profiles.csv` 不变。

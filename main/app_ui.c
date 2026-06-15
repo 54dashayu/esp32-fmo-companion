@@ -4029,7 +4029,7 @@ static lv_obj_t *settings_create_profile_detail_row(lv_obj_t *parent,
 {
     lv_obj_t *row = lv_obj_create(parent);
     make_clean_obj(row, UI_COLOR_PANEL, LV_OPA_COVER);
-    lv_obj_set_size(row, LV_PCT(90), 20);
+    lv_obj_set_size(row, LV_PCT(90), 24);
     lv_obj_align(row, LV_ALIGN_TOP_MID, 0, y);
     lv_obj_set_style_radius(row, 4, LV_PART_MAIN);
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
@@ -4048,7 +4048,7 @@ static lv_obj_t *settings_create_profile_detail_row(lv_obj_t *parent,
     lv_obj_set_style_text_align(label_name,
                                 LV_TEXT_ALIGN_LEFT,
                                 LV_PART_MAIN);
-    lv_obj_align(label_name, LV_ALIGN_TOP_LEFT, 24, y + 3);
+    lv_obj_align(label_name, LV_ALIGN_TOP_LEFT, 24, y + 4);
 
     lv_obj_t *label_value = lv_label_create(parent);
     lv_label_set_text(label_value, value ? value : "");
@@ -4059,7 +4059,7 @@ static lv_obj_t *settings_create_profile_detail_row(lv_obj_t *parent,
     lv_obj_set_style_text_align(label_value,
                                 LV_TEXT_ALIGN_RIGHT,
                                 LV_PART_MAIN);
-    lv_obj_align(label_value, LV_ALIGN_TOP_RIGHT, -24, y + 3);
+    lv_obj_align(label_value, LV_ALIGN_TOP_RIGHT, -24, y + 4);
 
     return label_value;
 }
@@ -4405,7 +4405,7 @@ static void create_settings_profile_detail_page(lv_obj_t *parent)
         s_settings_profile_detail_page,
         "WiFi配置",
         "未配置",
-        23,
+        26,
         settings_profile_detail_wifi_event_cb,
         NULL
     );
@@ -4414,7 +4414,7 @@ static void create_settings_profile_detail_page(lv_obj_t *parent)
         s_settings_profile_detail_page,
         "FMO地址",
         "未配置",
-        46,
+        54,
         settings_profile_detail_fmo_event_cb,
         NULL
     );
@@ -4423,7 +4423,7 @@ static void create_settings_profile_detail_page(lv_obj_t *parent)
         s_settings_profile_detail_page,
         "DDNS远程",
         "关",
-        69,
+        82,
         settings_profile_detail_ddns_event_cb,
         NULL
     );
@@ -4432,7 +4432,7 @@ static void create_settings_profile_detail_page(lv_obj_t *parent)
         s_settings_profile_detail_page,
         "QSQ/服务器",
         "未同步",
-        92,
+        110,
         settings_qso_sync_event_cb,
         NULL
     );
@@ -4441,7 +4441,7 @@ static void create_settings_profile_detail_page(lv_obj_t *parent)
         s_settings_profile_detail_page,
         "保存配置",
         "未保存",
-        115,
+        138,
         settings_profile_detail_save_event_cb,
         NULL
     );
