@@ -4,6 +4,8 @@ V2.0 支持从 TF 卡读取一个 CSV 配置文件。这个文件包含全局呼
 
 ## 文件名
 
+TF 卡建议使用 32GB 以下容量，并格式化为 FAT32。
+
 文件名固定为：
 
 - `fmo_profiles.csv`
@@ -55,6 +57,7 @@ BH1JSS,1,"Home,Desk","Home,WiFi","pass,word",192.168.31.146,0,1
 
 ## 导入规则
 
+- TF 卡建议为 32GB 以下、FAT32 格式。
 - 只读取 TF 卡根目录的 `fmo_profiles.csv`。
 - 被标记为 `active=1` 的配置必须同时包含 `wifi_ssid` 和 `fmo_host`。
 - 如果没有任何一行写 `active=1`，程序会选择第一组同时包含 `wifi_ssid` 和 `fmo_host` 的配置作为当前配置。
