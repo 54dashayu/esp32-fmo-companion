@@ -35,13 +35,13 @@ BH1JSS,4,Backup1,,,,0,0
 BH1JSS,5,Backup2,,,,0,0
 ```
 
-仓库内提供范例文件：
+仓库内提供模板文件：
 
 ```text
-docs/fmo_profiles.example.csv
+docs/fmo_profiles.csv
 ```
 
-复制到 TF 卡根目录后，请改名为：
+复制到 TF 卡根目录后，保持文件名不变：
 
 ```text
 fmo_profiles.csv

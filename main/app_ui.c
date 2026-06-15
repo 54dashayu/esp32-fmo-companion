@@ -371,7 +371,6 @@ static lv_obj_t *s_label_profile_detail_fmo = NULL;
 static lv_obj_t *s_label_profile_detail_ddns = NULL;
 static lv_obj_t *s_label_profile_detail_sync = NULL;
 static lv_obj_t *s_label_profile_detail_save = NULL;
-static lv_obj_t *s_label_profile_detail_enable = NULL;
 
 /* FMO 地址输入 */
 static lv_obj_t *s_label_fmo_page_title = NULL;
@@ -621,7 +620,6 @@ static void settings_profile_detail_wifi_event_cb(lv_event_t *e);
 static void settings_profile_detail_fmo_event_cb(lv_event_t *e);
 static void settings_profile_detail_ddns_event_cb(lv_event_t *e);
 static void settings_profile_detail_save_event_cb(lv_event_t *e);
-static void settings_profile_detail_enable_event_cb(lv_event_t *e);
 
 static void settings_callsign_open_event_cb(lv_event_t *e);
 static void settings_callsign_save_event_cb(lv_event_t *e);
@@ -1059,8 +1057,7 @@ static void settings_format_selected_profile(char *buf, size_t buf_size)
     }
 
     const app_settings_t *cfg = app_settings_get();
-    uint8_t index = (cfg && !s_settings_profile_select_editing) ?
-        cfg->active_profile_index : s_settings_edit_profile_index;
+    uint8_t index = s_settings_edit_profile_index;
 
     if (s_settings_profile_select_editing &&
         index == APP_CONNECTION_PROFILE_MAX) {
@@ -1093,8 +1090,7 @@ static void settings_format_selected_profile(char *buf, size_t buf_size)
 static const char *settings_selected_profile_status_text(void)
 {
     const app_settings_t *cfg = app_settings_get();
-    uint8_t index = (cfg && !s_settings_profile_select_editing) ?
-        cfg->active_profile_index : s_settings_edit_profile_index;
+    uint8_t index = s_settings_edit_profile_index;
 
     if (index == APP_CONNECTION_PROFILE_MAX) {
         index = s_settings_profile_select_saved_index;
@@ -1105,12 +1101,12 @@ static const char *settings_selected_profile_status_text(void)
     }
 
     if (!cfg || index >= APP_CONNECTION_PROFILE_MAX) {
-        return "未设置";
+        return "未配置";
     }
 
     const app_connection_profile_t *profile = &cfg->connection_profiles[index];
     return (profile->wifi_ssid[0] && profile->fmo_host[0]) ?
-        "已配置" : "未设置";
+        "已配置" : "未配置";
 }
 
 /* -------------------------------------------------------------------------- */
@@ -2023,7 +2019,7 @@ static void settings_profile_render(void)
                  (i == active) ? "*" : "",
                  (unsigned)(i + 1),
                  name,
-                 configured ? "已配置" : "未设置");
+                 configured ? "已配置" : "未配置");
 
         lv_label_set_text(s_profile_item_labels[i], buf);
         label_set_color(s_profile_item_labels[i],
@@ -2211,10 +2207,12 @@ static void settings_profile_select_apply(void)
         return;
     }
 
-    s_settings_edit_profile_index = fallback;
     if (ret == ESP_ERR_INVALID_STATE) {
-        app_ui_update_status("配置槽未设置");
+        s_settings_profile_select_saved_index = s_settings_edit_profile_index;
+        app_ui_update_status("配置槽待设置");
     } else {
+        s_settings_edit_profile_index = fallback;
+        s_settings_profile_select_saved_index = fallback;
         app_ui_update_status("切换配置失败");
     }
 }
@@ -2462,9 +2460,8 @@ static void settings_profile_network_event_cb(lv_event_t *e)
 {
     LV_UNUSED(e);
 
-    if (!s_settings_profile_select_editing) {
-        settings_profile_sync_home_to_active();
-    } else if (s_settings_edit_profile_index == APP_CONNECTION_PROFILE_MAX) {
+    if (s_settings_profile_select_editing &&
+        s_settings_edit_profile_index == APP_CONNECTION_PROFILE_MAX) {
         s_settings_edit_profile_index = s_settings_profile_select_saved_index;
     }
 
@@ -2525,8 +2522,6 @@ static void settings_profile_detail_render(void)
 {
     const app_settings_t *cfg = app_settings_get();
     const app_connection_profile_t *profile = NULL;
-    uint8_t active = cfg ? cfg->active_profile_index : 0;
-
     if (cfg && s_profile_detail_index < APP_CONNECTION_PROFILE_MAX) {
         profile = &cfg->connection_profiles[s_profile_detail_index];
     }
@@ -2543,14 +2538,14 @@ static void settings_profile_detail_render(void)
     if (s_label_profile_detail_wifi) {
         lv_label_set_text(
             s_label_profile_detail_wifi,
-            (profile && profile->wifi_ssid[0]) ? profile->wifi_ssid : "未设置"
+            (profile && profile->wifi_ssid[0]) ? profile->wifi_ssid : "未配置"
         );
     }
 
     if (s_label_profile_detail_fmo) {
         lv_label_set_text(
             s_label_profile_detail_fmo,
-            (profile && profile->fmo_host[0]) ? profile->fmo_host : "未设置"
+            (profile && profile->fmo_host[0]) ? profile->fmo_host : "未配置"
         );
     }
 
@@ -2573,11 +2568,6 @@ static void settings_profile_detail_render(void)
                           usable ? "已保存" : "未保存");
     }
 
-    if (s_label_profile_detail_enable) {
-        lv_label_set_text(s_label_profile_detail_enable,
-                          (cfg && usable && s_profile_detail_index == active) ?
-                              "已启用" : "未启用");
-    }
 }
 
 static void settings_profile_detail_save_event_cb(lv_event_t *e)
@@ -2598,25 +2588,6 @@ static void settings_profile_detail_save_event_cb(lv_event_t *e)
     }
 
     settings_profile_detail_render();
-    app_ui_focus_rebuild_active();
-}
-
-static void settings_profile_detail_enable_event_cb(lv_event_t *e)
-{
-    LV_UNUSED(e);
-
-    esp_err_t ret = app_settings_set_active_profile(s_profile_detail_index);
-    if (ret == ESP_OK) {
-        app_ui_update_status("连接配置已切换");
-        settings_refresh_home_values();
-        settings_show_home();
-    } else if (ret == ESP_ERR_INVALID_STATE) {
-        app_ui_update_status("配置槽未设置");
-    } else {
-        app_ui_update_status("切换配置失败");
-    }
-
-    settings_profile_render();
     app_ui_focus_rebuild_active();
 }
 
@@ -3571,12 +3542,12 @@ static void settings_fmo_open_event_cb(lv_event_t *e)
         }
 
         if (s_label_fmo_page_title) {
-        char title[32];
-        snprintf(title,
-                 sizeof(title),
-                 "FMO地址 配置%u",
-                 (unsigned)(index + 1));
-        lv_label_set_text(s_label_fmo_page_title, title);
+            char title[32];
+            snprintf(title,
+                     sizeof(title),
+                     "FMO Host P%u",
+                     (unsigned)(index + 1));
+            lv_label_set_text(s_label_fmo_page_title, title);
         }
     }
 
@@ -4433,7 +4404,7 @@ static void create_settings_profile_detail_page(lv_obj_t *parent)
     s_label_profile_detail_wifi = settings_create_profile_detail_row(
         s_settings_profile_detail_page,
         "WiFi配置",
-        "未设置",
+        "未配置",
         23,
         settings_profile_detail_wifi_event_cb,
         NULL
@@ -4442,7 +4413,7 @@ static void create_settings_profile_detail_page(lv_obj_t *parent)
     s_label_profile_detail_fmo = settings_create_profile_detail_row(
         s_settings_profile_detail_page,
         "FMO地址",
-        "未设置",
+        "未配置",
         46,
         settings_profile_detail_fmo_event_cb,
         NULL
@@ -4475,15 +4446,6 @@ static void create_settings_profile_detail_page(lv_obj_t *parent)
         NULL
     );
 
-    s_label_profile_detail_enable = settings_create_profile_detail_row(
-        s_settings_profile_detail_page,
-        "启用配置",
-        "未启用",
-        138,
-        settings_profile_detail_enable_event_cb,
-        NULL
-    );
-
     lv_obj_t *btn_back = settings_create_action_button(
         s_settings_profile_detail_page,
         "返回",
@@ -4509,7 +4471,7 @@ static void create_settings_fmo_page(lv_obj_t *parent)
     lv_obj_clear_flag(s_settings_fmo_page, LV_OBJ_FLAG_SCROLLABLE);
 
     s_label_fmo_page_title = lv_label_create(s_settings_fmo_page);
-    lv_label_set_text(s_label_fmo_page_title, "FMO地址 配置1");
+    lv_label_set_text(s_label_fmo_page_title, "FMO Host P1");
     label_set_color(s_label_fmo_page_title, UI_COLOR_ORANGE);
     label_set_font(s_label_fmo_page_title, ui_font_status());
     lv_obj_align(s_label_fmo_page_title, LV_ALIGN_TOP_MID, 0, 6);
@@ -4528,7 +4490,7 @@ static void create_settings_fmo_page(lv_obj_t *parent)
     lv_obj_set_style_pad_all(s_ta_fmo_host, 6, LV_PART_MAIN);
 
     lv_obj_t *hint = lv_label_create(s_settings_fmo_page);
-    lv_label_set_text(hint, "填写Host[:Port] 自动生成WS");
+    lv_label_set_text(hint, "Host[:Port] -> WS URL");
     label_set_color(hint, UI_COLOR_GRAY);
     label_set_font(hint, ui_font_status());
     lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, 66);
@@ -4553,7 +4515,7 @@ static void create_settings_fmo_page(lv_obj_t *parent)
 
     lv_obj_t *btn_restart = settings_create_action_button(
         s_settings_fmo_page,
-        "重启生效",
+        "Reboot",
         UI_COLOR_PANEL,
         UI_COLOR_ORANGE,
         settings_restart_event_cb

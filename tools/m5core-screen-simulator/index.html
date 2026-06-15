@@ -432,6 +432,7 @@
       profileBeforeEdit: 0,
       profileDraft: 0,
       activeProfile: 0,
+      selectedProfile: 0,
       detailProfile: 0,
       powerSave: false,
       theme: "dark",
@@ -459,30 +460,32 @@
         return "返回";
       }
 
-      const index = state.profileEdit ? state.profileDraft : state.activeProfile;
+      const index = state.profileEdit ? state.profileDraft : state.selectedProfile;
       const profile = state.profiles[index];
       return `${index + 1}/5 ${profile.name}`;
     }
 
     function settingsRows() {
-      const profile = state.profiles[state.activeProfile];
+      const profile = state.profiles[state.selectedProfile];
       return [
         ["TF卡配置文件", state.sdImportRead ? "已读取" : "未读取", () => {
           runSdImportDemo();
         }],
         ["选择配置", activeProfileText(), () => {
           if (!state.profileEdit) {
-            state.profileBeforeEdit = state.activeProfile;
-            state.profileDraft = state.activeProfile;
+            state.profileBeforeEdit = state.selectedProfile;
+            state.profileDraft = state.selectedProfile;
             state.profileEditReturn = false;
             state.profileEdit = true;
           } else {
             if (state.profileEditReturn) {
               state.status = "返回设置";
             } else if (!state.profiles[state.profileDraft].ssid || !state.profiles[state.profileDraft].host) {
+              state.selectedProfile = state.profileDraft;
               state.status = "配置槽待设置";
             } else {
               state.activeProfile = state.profileDraft;
+              state.selectedProfile = state.profileDraft;
               state.status = "配置已启用";
             }
             state.profileEdit = false;
@@ -491,8 +494,8 @@
           if (state.profileEdit) state.status = "A/C选择配置";
           render();
         }],
-        ["网络配置", profile.ssid && profile.host ? "已配置" : "未设置", () => {
-          state.detailProfile = state.activeProfile;
+        ["网络配置", profile.ssid && profile.host ? "已配置" : "未配置", () => {
+          state.detailProfile = state.selectedProfile;
           setView("profileDetail");
         }],
         ["呼号设置", state.callsign, () => setStatus("呼号设置")],
@@ -517,6 +520,7 @@
         { name: "配置5", ssid: "", password: "", host: "", ddns: false },
       ];
       state.activeProfile = 0;
+      state.selectedProfile = 0;
       state.detailProfile = 0;
       state.callsign = "BH1JSS";
       state.sdImportRead = true;
@@ -528,13 +532,11 @@
     function profileRows() {
       const profile = state.profiles[state.detailProfile];
       return [
-        ["WiFi配置", profile.ssid || "未设置", () => {
+        ["WiFi配置", profile.ssid || "未配置", () => {
           setView("wifi");
         }],
-        ["FMO地址", profile.host || "未设置", () => {
-          profile.host = profile.host || (profile.ddns ? "fmo.example.com:8080" : "192.168.31.146");
-          state.status = "FMO地址已填写";
-          render();
+        ["FMO地址", profile.host || "未配置", () => {
+          setView("fmo");
         }],
         ["DDNS远程", profile.ddns ? "开" : "关", () => {
           profile.ddns = !profile.ddns;
@@ -548,7 +550,6 @@
         ["保存配置", profile.ssid && profile.host ? "已保存" : "未保存", () => {
           setStatus(profile.ssid && profile.host ? "配置已保存" : "配置未完整");
         }],
-        ["启用配置", state.detailProfile === state.activeProfile && profile.ssid && profile.host ? "已启用" : "未启用", () => chooseProfile(state.detailProfile)],
       ];
     }
 
@@ -670,7 +671,7 @@
             <div class="profile-row ${index === state.activeProfile ? "active" : ""}
               ${index === state.focus ? "selected" : ""}" data-index="${index}">
               ${index === state.activeProfile ? "*" : "&nbsp;"}${index + 1}
-              ${profile.name} ${profile.ssid && profile.host ? "已配置" : "未设置"}
+              ${profile.name} ${profile.ssid && profile.host ? "已配置" : "未配置"}
             </div>
           `).join("")}
           <button class="action profile-back ${state.focus === backIndex ? "selected" : ""}">返回</button>
@@ -703,7 +704,7 @@
           <div class="title">配置${detailIndex + 1}详情</div>
           ${rows.map((row, index) => `
             <div class="detail-row ${index === state.focus ? "focused" : ""}" data-index="${index}"
-              style="top:${[23, 46, 69, 92, 115, 138][index]}px">
+              style="top:${[23, 46, 69, 92, 115][index]}px">
               <div>${row[0]}</div>
               <div class="value">${row[1]}</div>
             </div>
@@ -721,7 +722,7 @@
     }
 
     function renderFmo() {
-      const profile = state.profiles[state.activeProfile];
+      const profile = state.profiles[state.detailProfile];
       screen.innerHTML = `
         <div class="topbar">
           <div class="back">‹</div>
@@ -729,14 +730,14 @@
           <div class="version">v2.0.1</div>
         </div>
         <div class="subpage">
-          <div class="title">FMO地址 配置${state.activeProfile + 1}</div>
+          <div class="title">FMO Host P${state.detailProfile + 1}</div>
           <div class="input">${profile.host || "Host[:Port]"}</div>
-          <div class="hint">填写Host[:Port] 自动生成WS</div>
+          <div class="hint">Host[:Port] -> WS URL</div>
           <div class="actions" style="margin-top:16px">
             <button class="action">返回</button>
             <button class="action primary">保存</button>
           </div>
-          <button class="action" style="position:absolute;left:6%;right:6%;bottom:34px;width:88%;color:var(--orange)">重启生效</button>
+          <button class="action" style="position:absolute;left:6%;right:6%;bottom:34px;width:88%;color:var(--orange)">Reboot</button>
         </div>
       `;
     }
@@ -814,9 +815,11 @@
     function chooseProfile(index) {
       const profile = state.profiles[index];
       if (!profile.ssid || !profile.host) {
+        state.selectedProfile = index;
         state.status = "配置槽待设置";
       } else {
         state.activeProfile = index;
+        state.selectedProfile = index;
         state.status = "连接配置已切换";
         state.view = "settings";
       }
@@ -868,9 +871,11 @@
             if (state.profileEditReturn) {
               state.status = "返回设置";
             } else if (!state.profiles[state.profileDraft].ssid || !state.profiles[state.profileDraft].host) {
+              state.selectedProfile = state.profileDraft;
               state.status = "配置槽待设置";
             } else {
               state.activeProfile = state.profileDraft;
+              state.selectedProfile = state.profileDraft;
               state.status = "配置已启用";
             }
             state.profileEdit = false;

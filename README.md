@@ -144,7 +144,7 @@ FMO 地址支持填写：
 GitHub Release 中通常包含：
 
 - `fmo-companion-m5core-windows-flasher-v2.0.1.zip`：推荐的 Windows 一键刷写包；
-- `fmo-companion-m5core-firmware-v2.0.1.zip`：固件 bin、CSV 范例与 SHA-256 校验文件；
+- `fmo-companion-m5core-firmware-v2.0.1.zip`：固件 bin、`fmo_profiles.csv` 模板与 SHA-256 校验文件；
 - `fmo-companion-m5core-merged-v2.0.1.bin`：完整固件，包含 bootloader、分区表和 app，从 `0x0` 地址刷写；
 - `fmo-companion-m5core-app-only-v2.0.1.bin`：仅 app 分区固件，从 `0x10000` 地址刷写，适合熟悉 ESP-IDF 的用户。
 

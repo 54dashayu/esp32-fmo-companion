@@ -23,7 +23,7 @@ BH1JSS,4,Backup1,,,,0,0
 BH1JSS,5,Backup2,,,,0,0
 ```
 
-仓库内也提供了范例文件：[fmo_profiles.example.csv](fmo_profiles.example.csv)。复制到 TF 卡根目录时，把文件名改成 `fmo_profiles.csv`。
+仓库内也提供了模板文件：[fmo_profiles.csv](fmo_profiles.csv)。复制到 TF 卡根目录时，保持文件名 `fmo_profiles.csv` 不变。
 
 第一行表头可以使用中文，M5 会跳过第一行，不会把表头显示到设备上；但后续 5 行的列顺序必须保持不变。
 
@@ -66,10 +66,10 @@ BH1JSS,1,"Home,Desk","Home,WiFi","pass,word",192.168.31.146,0,1
 
 ## 建议流程
 
-1. 在电脑上复制 `docs/fmo_profiles.example.csv`。
+1. 在电脑上复制 `docs/fmo_profiles.csv`。
 2. 修改呼号、WiFi、FMO 地址，并保存为 UTF-8 文本。
 3. 放到 TF 卡根目录。
-4. 文件名改为 `fmo_profiles.csv`。
+4. 确认文件名仍为 `fmo_profiles.csv`。
 5. 插入 M5 Core。
 6. 进入设置页第一行 `TF卡配置文件`，按 `读取`。
 7. 回到设置页确认状态为 `已读取`，并检查当前配置名称和网络信息。
